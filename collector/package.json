@@ -1,0 +1,24 @@
+{
+  "name": "speedway-collector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playwright Browser Collector para Speedway Analytics",
+  "type": "module",
+  "scripts": {
+    "login": "node login.js",
+    "collect": "node collector.js",
+    "status": "node status.js",
+    "validate:parser": "node validate-parser.js",
+    "validate:url": "node lib/url-filter.test.js",
+    "validate:collect": "node validate-collect.js",
+    "validate:smoke": "node validate-smoke.js",
+    "validate": "npm run validate:parser && npm run validate:url && npm run validate:smoke"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "playwright": "^1.51.0"
+  }
+}
