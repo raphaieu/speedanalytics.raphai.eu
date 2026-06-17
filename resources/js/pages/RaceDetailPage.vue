@@ -76,6 +76,7 @@ onMounted(async () => {
         <p><strong class="text-foreground">Forecast</strong> — 1º e 2º por menor odd (ex.: 1-4).</p>
         <p class="mt-1"><strong class="text-foreground">Tricast</strong> — 1º, 2º e 3º por menor odd.</p>
         <p class="mt-1"><strong class="text-foreground">Favorito</strong> — piloto com menor odd pré-corrida.</p>
+        <p class="mt-1"><strong class="text-foreground">Zebra</strong> — piloto com maior odd pré-corrida (zebra vence quando esse piloto ganha).</p>
         <p class="mt-1"><strong class="text-foreground">Cores</strong> — P1 verde, P2 vermelho, P3 amarelo, P4 roxo.</p>
       </div>
 
@@ -99,8 +100,11 @@ onMounted(async () => {
           <p v-if="race.status === 'settled' && race.favorite_won === true" class="text-xs text-muted-foreground">
             Favorito venceu a corrida.
           </p>
+          <p v-else-if="race.status === 'settled' && race.underdog_won === true" class="text-xs text-muted-foreground">
+            Zebra venceu a corrida.
+          </p>
           <p v-else-if="race.status === 'settled' && race.favorite_won === false" class="text-xs text-muted-foreground">
-            Favorito não venceu (zebra).
+            Favorito não venceu.
           </p>
         </CardContent>
       </Card>

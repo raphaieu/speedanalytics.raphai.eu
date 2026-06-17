@@ -1,6 +1,6 @@
 # Arquitetura — Speedway Analytics
 
-Última atualização: 2026-06-18
+Última atualização: 2026-06-17
 
 ## Visão geral
 
@@ -90,9 +90,12 @@ resources/
 ### Rotas
 
 ```txt
-GET  /api/collector/status   →  CollectorController@status
-POST /api/collector/speedway →  CollectorController@store  (token)
+GET  /api/collector/status   →  CollectorStatusController@show
+POST /api/collector/speedway →  CollectorIngestController@store  (token)
 GET  /api/races              →  RaceController@index
+GET  /api/analytics/summary
+GET  /api/analytics/favorite-odds-bands
+GET  /api/analytics/underdog-odds-bands
 …
 
 GET  /*                      →  view('app')   # Vue Router no client
@@ -186,6 +189,30 @@ Runtime/deploy Node extra além do collector. Descartado.
 | 1 | Métricas, favorito, zebra, spread | Alta |
 | 2 | Setups e demo | Média |
 | 3 | Auth Sanctum | Quando necessário |
+
+### Analytics e métricas (incremental já em uso)
+
+- Backend:
+  - `RaceMetricsService` centraliza cálculo de métricas por corrida
+  - comando `speedway:recalculate-metrics` para recálculo histórico em chunks
+- Frontend:
+  - `/analytics` com cards e bandas de favorito/zebra
+  - `/glossario` com conceitos e fórmulas
+- Métricas base persistidas em `speedway_races`:
+  - `favorite_*`, `underdog_*`, `winner_was_favorite`, `winner_was_underdog`
+  - `winner_odd_rank` (rank do vencedor por odd pré-corrida)
+  - `odds_spread`, `house_margin`
+  - `forecast_hit`, `tricast_winner_hit`, `tricast_exact_hit`
+
+### Semântica de previsão
+
+- Forecast e tricast do sistema são derivados de odds pré-corrida (ordem crescente)
+- `forecast_hit` exige acerto exato da ordem 1º+2º
+- `tricast_exact_hit` exige acerto exato da ordem 1º+2º+3º
+- `tricast_winner_hit` acompanha apenas acerto do primeiro piloto previsto
+- Nomenclatura de corrida:
+  - zebra só quando o piloto de maior odd vence
+  - “favorito não venceu” não implica zebra automaticamente
 
 ### Regras de processamento (PRD §7.10–7.11)
 

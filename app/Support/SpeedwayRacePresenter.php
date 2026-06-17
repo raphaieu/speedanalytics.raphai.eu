@@ -29,6 +29,7 @@ class SpeedwayRacePresenter
             'odds_forecast' => $oddsAnalysis['forecast'],
             'odds_tricast' => $oddsAnalysis['tricast'],
             'favorite_won' => $oddsAnalysis['favorite_won'],
+            'underdog_won' => $race->winner_was_underdog,
             'forecast_first_won' => $oddsAnalysis['forecast_first_won'],
             'winner_position' => $race->winner_position,
             'winner_odd' => $race->winner_odd,

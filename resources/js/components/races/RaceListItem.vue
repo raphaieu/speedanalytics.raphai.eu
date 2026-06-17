@@ -77,7 +77,8 @@ function scheduleLabel(race: RaceSummary) {
       >
         Fc {{ race.odds_forecast }}
         <span v-if="race.favorite_won === true">· fav venceu</span>
-        <span v-else-if="race.favorite_won === false">· zebra</span>
+        <span v-else-if="race.underdog_won === true">· zebra venceu</span>
+        <span v-else-if="race.favorite_won === false">· favorito não venceu</span>
       </p>
     </div>
   </RouterLink>

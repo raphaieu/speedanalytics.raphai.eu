@@ -47,6 +47,8 @@ php artisan queue:work redis    # terminal 3 — processa payloads
 
 - Dashboard: `/` — lê status do collector via `GET /api/collector/status`
 - Corridas: `/races` — histórico via `GET /api/races`
+- Análises: `/analytics` — resumo e bandas de favorito/zebra
+- Glossário: `/glossario` — conceitos e fórmulas das métricas
 
 ### Collector
 
@@ -69,6 +71,46 @@ Ver [collector/README.md](collector/README.md).
 ├── collector/                  # Coleta BB Tips (Fase 0)
 └── components.json             # shadcn-vue
 ```
+
+## Analytics (Fase 2 em andamento)
+
+### Páginas
+
+- `/analytics` — cards de resumo + tabelas por faixa de odd
+  - Favorito por faixa de odd
+  - Zebra por faixa de odd
+- `/glossario` — documentação funcional dos termos e fórmulas
+
+### Endpoints
+
+- `GET /api/analytics/summary`
+  - filtros opcionais: `date_from`, `date_to`, `hour_from`, `hour_to`, `only_validated`
+- `GET /api/analytics/favorite-odds-bands`
+  - análise por faixa de `favorite_odd`
+- `GET /api/analytics/underdog-odds-bands`
+  - análise por faixa de `underdog_odd` (odds altas)
+
+### Definições importantes
+
+- **Favorito**: piloto com menor odd pré-corrida
+- **Zebra**: piloto com maior odd pré-corrida
+- **Não favorito** não significa zebra (há rank 2 e rank 3)
+- `winner_was_favorite = winner_position === favorite_position`
+- `winner_was_underdog = winner_position === underdog_position`
+- `winner_odd_rank`: rank do vencedor ao ordenar odds da menor para maior
+
+### Forecast e Tricast do sistema
+
+- Forecast previsto: 1º e 2º menores odds
+- Tricast previsto: 1º, 2º e 3º menores odds
+- `forecast_hit`: acerto exato de 1º+2º
+- `tricast_exact_hit`: acerto exato de 1º+2º+3º quando houver ordem real completa
+- `tricast_winner_hit`: apenas o 1º do tricast bate com o vencedor
+
+### Percentuais na API
+
+- Os endpoints de analytics retornam percentuais em **percentage points** (ex.: `39.11` = `39,11%`)
+- `house_margin` é salvo em decimal no banco (`0.05`) e exposto em percentual na API (`5.00`)
 
 ## Variáveis `.env` (app)
 

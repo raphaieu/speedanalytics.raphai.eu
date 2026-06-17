@@ -6,6 +6,41 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Adicionado — Analytics e métricas por corrida
+
+- `RaceMetricsService` para cálculo centralizado de métricas base por corrida:
+  - favorito, segundo favorito, zebra, spread, margem da casa
+  - `winner_was_favorite`, `winner_was_underdog`, `winner_odd_rank`
+  - `forecast_hit` (acerto exato 1º+2º por odds)
+  - `tricast_winner_hit` e `tricast_exact_hit` (acerto exato 1º+2º+3º quando aplicável)
+- `php artisan speedway:recalculate-metrics` para recálculo em chunks de corridas históricas
+- Endpoint `GET /api/analytics/summary` com filtros (`date_from/date_to`, `hour_from/hour_to`, `only_validated`) e bloco `metadata` de diagnóstico
+- Endpoint `GET /api/analytics/favorite-odds-bands` com análise por faixa de odd do favorito (ROI, edge, P/L)
+- Endpoint `GET /api/analytics/underdog-odds-bands` com análise por faixa de odd da zebra (odds altas)
+- Página `/analytics` com:
+  - cards de resumo
+  - tabela de favorito por faixa
+  - tabela de zebra por faixa
+  - filtros globais e estados de loading/vazio
+- Página `/glossario` com definições e fórmulas de métricas e termos de corrida
+
+### Alterado — Semântica de forecast/tricast e zebra
+
+- Forecast e tricast do sistema passam a ser derivados de odds pré-corrida (menor → maior), não da leitura literal de campos de previsão do provedor
+- `forecast_hit` deixou de ser equivalente a “favorito venceu” e passou a exigir acerto da ordem 1º+2º
+- `tricast_hit` (compatibilidade) representa acerto exato 1º+2º+3º (`tricast_exact_hit`)
+- Nomenclatura de UI ajustada:
+  - “zebra” só quando o piloto de maior odd vence
+  - “favorito não venceu” quando não houve vitória do favorito sem caracterizar zebra
+  - bloco “Como ler esta corrida” atualizado com definição explícita de zebra
+
+### Documentação
+
+- README, ARCHITECTURE e CHANGELOG atualizados com:
+  - endpoints de analytics
+  - novas páginas `/analytics` e `/glossario`
+  - contratos de métricas/percentuais e conceito de `winner_odd_rank`
+
 ### Planejado — Fase 2+
 
 - Métricas, setups, demo, backtests, IA explicativa

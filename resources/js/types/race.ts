@@ -29,6 +29,7 @@ export type RaceSummary = {
   odds_forecast: string | null;
   odds_tricast: string | null;
   favorite_won: boolean | null;
+  underdog_won?: boolean | null;
   forecast_first_won: boolean | null;
   winner_position: number | null;
   winner_odd: string | null;

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\SpeedwayPayload;
 use App\Models\SpeedwayRace;
+use App\Services\Speedway\RaceMetricsService;
 use App\Services\Speedway\SpeedwayParserService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -16,7 +17,7 @@ class ProcessSpeedwayPayloadJob implements ShouldQueue
 
     public function __construct(public int $speedwayPayloadId) {}
 
-    public function handle(SpeedwayParserService $parser): void
+    public function handle(SpeedwayParserService $parser, RaceMetricsService $metricsService): void
     {
         $payloadRecord = SpeedwayPayload::query()->findOrFail($this->speedwayPayloadId);
 
@@ -25,7 +26,7 @@ class ProcessSpeedwayPayloadJob implements ShouldQueue
             $capturedAt = $payloadRecord->captured_at ?? now();
 
             foreach ($summary['races'] as $parsedRace) {
-                $this->upsertRace($parsedRace, $capturedAt, $payloadRecord->id);
+                $this->upsertRace($parsedRace, $capturedAt, $payloadRecord->id, $metricsService);
             }
 
             $payloadRecord->update([
@@ -52,14 +53,13 @@ class ProcessSpeedwayPayloadJob implements ShouldQueue
     /**
      * @param  array<string, mixed>  $parsedRace
      */
-    private function upsertRace(array $parsedRace, Carbon $capturedAt, int $payloadId): void
+    private function upsertRace(array $parsedRace, Carbon $capturedAt, int $payloadId, RaceMetricsService $metricsService): void
     {
-        $existing = SpeedwayRace::query()
-            ->where('external_id', $parsedRace['external_id'])
-            ->first();
+        $externalId = (string) data_get($parsedRace, 'external_id', '');
+        $existing = SpeedwayRace::query()->whereExternalId($externalId)->first();
 
         if (! $existing) {
-            SpeedwayRace::query()->create([
+            $createData = [
                 'external_id' => $parsedRace['external_id'],
                 'status' => $parsedRace['status'],
                 'race_hour' => $parsedRace['race_hour'],
@@ -77,7 +77,12 @@ class ProcessSpeedwayPayloadJob implements ShouldQueue
                 'raw_pending_payload' => $parsedRace['status'] === 'pending' ? $parsedRace['raw'] : null,
                 'raw_result_payload' => $parsedRace['status'] === 'settled' ? $parsedRace['raw'] : null,
                 'last_payload_id' => $payloadId,
-            ]);
+            ];
+
+            SpeedwayRace::query()->create(array_merge(
+                $createData,
+                $metricsService->calculate($createData),
+            ));
 
             return;
         }
@@ -106,12 +111,48 @@ class ProcessSpeedwayPayloadJob implements ShouldQueue
             $updates['prediction'] = $parsedRace['prediction'];
             $updates['prediction_odd'] = $parsedRace['prediction_odd'];
             $updates['tricast_prediction'] = $parsedRace['tricast_prediction'];
+        }
 
-            if (! $existing->raw_pending_payload && $existing->pilot_odds_raw) {
-                // Preserva odds pré-corrida já salvas no campo normalizado
+        $metricsInput = [
+            'pilot_odds_raw' => $this->resolvePreRaceOddsRaw($existing, $parsedRace),
+            'raw_pending_payload' => $existing->raw_pending_payload ?? $updates['raw_pending_payload'] ?? null,
+            'winner_position' => $updates['winner_position'] ?? $existing->winner_position,
+            'prediction' => $updates['prediction'] ?? $existing->prediction,
+            'tricast_prediction' => $updates['tricast_prediction'] ?? $existing->tricast_prediction,
+            'raw_result_payload' => $updates['raw_result_payload'] ?? $existing->raw_result_payload,
+        ];
+
+        $existing->update(array_merge(
+            $updates,
+            $metricsService->calculate($metricsInput),
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsedRace
+     */
+    private function resolvePreRaceOddsRaw(SpeedwayRace $existing, array $parsedRace): ?string
+    {
+        if (is_array($existing->raw_pending_payload)) {
+            $pendingOdds = $existing->raw_pending_payload['Odds_Pilotos'] ?? null;
+            if (is_string($pendingOdds) && $pendingOdds !== '') {
+                return $pendingOdds;
             }
         }
 
-        $existing->update($updates);
+        if (is_string($existing->pilot_odds_raw) && $existing->pilot_odds_raw !== '') {
+            return $existing->pilot_odds_raw;
+        }
+
+        if (isset($parsedRace['raw']) && is_array($parsedRace['raw'])) {
+            $pendingOdds = $parsedRace['raw']['Odds_Pilotos'] ?? null;
+            if (is_string($pendingOdds) && $pendingOdds !== '') {
+                return $pendingOdds;
+            }
+        }
+
+        return isset($parsedRace['pilot_odds_raw']) && is_string($parsedRace['pilot_odds_raw']) && $parsedRace['pilot_odds_raw'] !== ''
+            ? $parsedRace['pilot_odds_raw']
+            : null;
     }
 }
