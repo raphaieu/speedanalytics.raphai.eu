@@ -6,25 +6,39 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Planejado — Fase 2+
+
+- Métricas, setups, demo, backtests, IA explicativa
+- Auth Sanctum (quando houver login de usuários)
+
+---
+
+## [1.0.0] — 2026-06-18 — Fase 1 concluída
+
+MVP fundação em produção: coleta 24/7, backend, histórico, deploy Coolify e PWA.
+
+### Adicionado — PWA
+
+- `vite-plugin-pwa` — manifest, service worker (`autoUpdate`), cache offline do shell
+- `usePwaInstall` + `PwaInstallBanner` — prompt de instalação no celular
+- Ícones PWA (`public/pwa-*.png`, `maskable-icon`, `apple-touch-icon`, `favicon.ico`)
+- `npm run pwa:assets` — regenerar ícones a partir de `public/pwa-source.svg`
+- Nginx: header `Service-Worker-Allowed` para `/build/sw.js`
+
+---
+
+## [0.3.0] — 2026-06-18 — Fase 1 em produção
+
+Deploy validado no **Coolify** ([speedanalytics.raphai.eu](https://speedanalytics.raphai.eu)): coleta 24/7, ingestão de payloads, fila, dashboard e histórico de corridas.
+
 ### Adicionado — Deploy produção (Coolify)
 
-- `docker-compose.yml` — stack completa para **Coolify**: `web`, `queue`, `collector`, `mysql`, `redis`
-- `docker/app/Dockerfile` — imagem multi-stage (build Vite + Composer + PHP 8.4-FPM + nginx/supervisor)
+- `docker-compose.yml` — stack completa: `web`, `queue`, `collector`, `mysql`, `redis`
+- `docker/app/Dockerfile` — imagem multi-stage (Vite + Composer + PHP 8.4-FPM + nginx/supervisor)
 - `docker/collector/Dockerfile` — Node 24 + Playwright Chromium
-- `docker/nginx/coolify.conf`, `docker/supervisor/supervisord.conf`
-- `.env.coolify.example` — variáveis para Environment Variables do Coolify
-- `.dockerignore` — otimiza build sem bind mounts
-- `bootstrap/app.php` — `trustProxies(at: '*')` para Traefik/Caddy do Coolify
-
-### Corrigido — Deploy Coolify
-
-- Container `web` unhealthy — nginx Debian servia `sites-enabled/default` (`/var/www/html`) em vez do Laravel
-- Permissões de `storage/` ao montar volumes nomeados — `docker/app/entrypoint.sh`
-
-- Compose orientado a Coolify: sem bind mounts, sem `ports` publicados, código embutido na imagem
-- Serviço público renomeado para **`web`** (nginx + PHP-FPM em container único)
-- Collector aponta para `http://web/api/collector/speedway` na rede interna
-- `.env.docker.example` — legado/manual; produção via `.env.coolify.example`
+- `docker/nginx/coolify.conf`, `docker/supervisor/supervisord.conf`, `docker/app/entrypoint.sh`
+- `.env.coolify.example`, `.dockerignore`
+- `bootstrap/app.php` — `trustProxies(at: '*')` para proxy do Coolify
 
 ### Adicionado — Fase 1 (persistência)
 
@@ -37,18 +51,23 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Collector: POST ao backend após salvar local (`SPEEDWAY_COLLECTOR_ENDPOINT`)
 - Página Vue Corridas com tabela real
 - `php artisan speedway:import-payloads` — importar JSONs locais
-- `docker-compose.yml` — MySQL 8.4, Redis 7, queue worker *(evoluído: stack Coolify completa — ver acima)*
+- Stack MySQL 8.4 + Redis 7
+
+### Corrigido — Deploy Coolify
+
+- Container `web` unhealthy — nginx Debian servia `sites-enabled/default` em vez do Laravel (`/up` retornava 404)
+- Permissões de `storage/` ao montar volumes nomeados no Coolify
+
+### Alterado — Deploy
+
+- Compose orientado a Coolify: sem bind mounts, sem `ports` publicados, código embutido na imagem
+- Serviço público **`web`** (nginx + PHP-FPM em container único)
+- Collector → `http://web/api/collector/speedway` na rede interna
 
 ### Documentação
 
-- README — seção **Docker / Coolify** com passo a passo de deploy e sessão BB Tips
-- `docs/ARCHITECTURE.md` — diagrama, estrutura `docker/` e deploy Coolify
-- `collector/README.md` e `collector/docs/VALIDATION.md` — produção via Docker Compose / Coolify
-
-### Planejado — Fase 1 (restante)
-
-- `vite-plugin-pwa` — PWA install prompt
-- Auth Sanctum (quando necessário)
+- README, ARCHITECTURE, collector — deploy Coolify e status de produção
+- Checklist de validação em produção atualizado
 
 ---
 
@@ -104,7 +123,7 @@ Primeira entrega funcional: coleta passiva 24/7 via Playwright.
 ### Documentação (histórico)
 
 - Criados `README.md`, `docs/ARCHITECTURE.md`, `CHANGELOG.md`
-- Decisões intermediárias (Opção C com `frontend/` separado) — **substituídas** por monólito Laravel; ver `[Unreleased]`
+- Decisões intermediárias (Opção C com `frontend/` separado) — **substituídas** por monólito Laravel; ver `[0.2.0]`
 
 ---
 

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router';
+import PwaInstallBanner from '@/components/PwaInstallBanner.vue';
 </script>
 
 <template>
   <div class="min-h-screen bg-background text-foreground">
+    <PwaInstallBanner />
     <header class="border-b border-border">
       <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <div>

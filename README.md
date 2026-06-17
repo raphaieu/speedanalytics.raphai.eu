@@ -9,8 +9,8 @@ Documento de produto: [PRD.md](PRD.md) · Arquitetura: [docs/ARCHITECTURE.md](do
 | Fase | Escopo | Status |
 |------|--------|--------|
 | **0** | Playwright Collector | Concluída |
-| **1** | Laravel 13 + Vue SPA + API collector + deploy Coolify | Em andamento |
-| **2+** | Métricas, PWA, setups, demo, IA | Futuro |
+| **1** | Laravel 13 + Vue SPA + API + deploy Coolify + PWA | **Concluída** |
+| **2+** | Métricas, setups, demo, IA, auth Sanctum | Futuro |
 
 ## Stack
 
@@ -84,7 +84,13 @@ SPEEDWAY_COLLECTOR_TOKEN=       # POST /api/collector/speedway
 # COLLECTOR_STATUS_PATH=        # default: collector/storage/collector-status.json
 ```
 
-## Docker / Coolify (produção)
+## Produção
+
+**URL:** [https://speedanalytics.raphai.eu](https://speedanalytics.raphai.eu)
+
+Stack no **Coolify** (Oracle VPS): `web`, `queue`, `collector`, `mysql`, `redis` — coleta 24/7, API, dashboard, histórico de corridas e **PWA instalável** no celular.
+
+## Docker / Coolify (deploy)
 
 Stack completa para **Coolify**: Laravel (nginx + PHP-FPM), MySQL, Redis, queue worker e collector Playwright.
 
@@ -102,8 +108,15 @@ Stack completa para **Coolify**: Laravel (nginx + PHP-FPM), MySQL, Redis, queue 
 ### 2. Sessão BB Tips (collector)
 
 1. No PC: `cd collector && npm run login`
-2. Envie `collector/storage/bbtips-storage-state.json` para o volume persistente do collector (`/app/storage/` — use o Terminal do Coolify ou SCP no host)
-3. Reinicie o serviço **collector**
+2. Copie para o volume compartilhado (via container `web`, mais fácil):
+
+```bash
+docker cp ~/bbtips-storage-state.json \
+  web-<coolify-id>:/var/www/collector/storage/bbtips-storage-state.json
+docker restart collector-<coolify-id>
+```
+
+3. Ou envie para `/app/storage/` do container **collector** (Terminal Coolify)
 
 Quando a sessão expirar (`needs_login`), repita o processo.
 
@@ -111,11 +124,14 @@ Quando a sessão expirar (`needs_login`), repita o processo.
 
 Com `infra_mysql` / `infra_redis` em `:3306` / `:6379`: não use este compose. Prefira `php artisan serve --port=9001` + collector local ([collector/README.md](collector/README.md)).
 
-## Próximos passos (Fase 1)
+## PWA
 
-1. ~~Migrations + `ProcessSpeedwayPayloadJob`~~ ✓
-2. ~~Collector → POST payloads ao Laravel~~ ✓
-3. ~~`docker-compose.yml` (Coolify: web, queue, collector, mysql, redis)~~ ✓
-4. ~~`php artisan speedway:import-payloads`~~ ✓
-5. Deploy inicial no Coolify + sessão BB Tips no collector
-6. `vite-plugin-pwa` — PWA install prompt
+- `vite-plugin-pwa` — manifest, service worker e cache offline do shell da SPA
+- Banner **Instalar** no app quando o browser suporta (`beforeinstallprompt`)
+- Ícones: `public/pwa-source.svg` → `npm run pwa:assets` para regenerar PNGs
+
+Auth **Sanctum** fica para fase futura (quando houver login de usuários).
+
+## Próximos passos (Fase 2)
+
+Métricas, setups, demo, backtests e IA — ver [PRD.md](PRD.md).

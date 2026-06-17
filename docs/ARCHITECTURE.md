@@ -41,7 +41,7 @@ collector/  (Node 24 + Playwright) — serviço irmão, não dentro do PHP
 |--------|------------|
 | App principal | **Laravel 13** monólito (PHP 8.4+ em produção) |
 | Frontend | **Vue 3** SPA em `resources/js/` |
-| Build | **Vite** (integrado ao Laravel) + `vite-plugin-pwa` |
+| Build | **Vite** + `vite-plugin-pwa` ✓ |
 | Estilo | **Tailwind CSS** |
 | Componentes UI | **shadcn-vue** (adotar progressivamente) |
 | Auth SPA | Laravel **Sanctum** |
@@ -168,20 +168,24 @@ Runtime/deploy Node extra além do collector. Descartado.
 
 - [x] Laravel 13 na raiz + Vue 3 SPA (`resources/js/`)
 - [x] Tailwind v4 + shadcn-vue (`components.json`, Button/Card/Badge/Separator)
-- [x] `GET /api/collector/status`, `GET /api/races`, `POST /api/collector/speedway` (stub)
-- [x] Dashboard Vue lendo `collector-status.json`
+- [x] `GET /api/collector/status`, `GET /api/races`, `POST /api/collector/speedway`
+- [x] Dashboard Vue + página Corridas com dados reais
 
-### A construir
+### Produção (2026-06-18) ✓
+
+- [x] Deploy **Coolify** em `https://speedanalytics.raphai.eu`
+- [x] Stack: `web`, `queue`, `collector`, `mysql`, `redis`
+- [x] Collector Playwright 24h + POST ao Laravel + queue worker
+- [x] Sessão BB Tips via `bbtips-storage-state.json` no volume persistente
+- [x] **PWA** — `vite-plugin-pwa`, install prompt, ícones, service worker
+
+### Fase 2+ (próximo)
 
 | # | Entrega | Prioridade |
 |---|---------|------------|
-| 1 | ~~Migrations: `speedway_payloads`, `speedway_races`, `collector_statuses`, `collector_runs`~~ | ✓ |
-| 2 | ~~`ProcessSpeedwayPayloadJob` — portar `collector/lib/parse-races.js`~~ | ✓ |
-| 3 | ~~Collector: POST ao backend após salvar local~~ | ✓ |
-| 4 | ~~`docker-compose.yml` — mysql, redis, queue, web, collector (Coolify)~~ | ✓ |
-| 5 | `vite-plugin-pwa` — PWA install prompt | Média |
-| 6 | ~~`php artisan speedway:import-payloads`~~ | ✓ |
-| 7 | Auth Sanctum (quando necessário) | Baixa |
+| 1 | Métricas, favorito, zebra, spread | Alta |
+| 2 | Setups e demo | Média |
+| 3 | Auth Sanctum | Quando necessário |
 
 ### Regras de processamento (PRD §7.10–7.11)
 
@@ -254,7 +258,9 @@ http://web/api/collector/speedway           → rede interna (collector → Lara
 - Pós-deploy: `php artisan migrate --force` no serviço `web`
 - Sessão BB Tips: `npm run login` no PC → copiar `bbtips-storage-state.json` para volume do collector
 
-Guia operacional: [README.md](../README.md#docker--coolify-produção).
+Guia operacional: [README.md](../README.md#docker--coolify-deploy).
+
+**Status:** em produção desde 2026-06-18 — coleta, API e SPA validados em `speedanalytics.raphai.eu`.
 
 ---
 

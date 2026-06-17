@@ -137,6 +137,11 @@ SPEEDWAY_COLLECTOR_ENDPOINT=http://web/api/collector/speedway
 SPEEDWAY_COLLECTOR_TOKEN=   # igual ao .env raiz / Coolify
 ```
 
-## Próximo passo (Fase 1)
+## Status
 
-Integração com Laravel **concluída** (`POST /api/collector/speedway`). Pendente: deploy Coolify + PWA. Ver [CHANGELOG.md](../CHANGELOG.md).
+- **Produção:** [speedanalytics.raphai.eu](https://speedanalytics.raphai.eu) — Coolify, coleta 24/7, PWA ✓
+- **Fase 1:** concluída (`1.0.0`)
+
+## Próximo passo
+
+Fase 2 — métricas, setups e demo. Ver [PRD.md](../PRD.md) e [CHANGELOG.md](../CHANGELOG.md).

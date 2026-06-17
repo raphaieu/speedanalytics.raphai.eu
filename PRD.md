@@ -1488,7 +1488,7 @@ Node.js 24 + Playwright (serviço separado em collector/)
 
 Deploy:
   Coolify — docker-compose (web, queue, collector, mysql, redis)
-  Domínio: speedanalytics.raphai.eu
+  Produção: https://speedanalytics.raphai.eu (desde 2026-06-18)
 
 Formato mobile:
 PWA (requisito — RNF006)
@@ -2138,20 +2138,20 @@ Produto pode ser interpretado como promessa de lucro.
 
 ## Fase 1 — Fundação
 
-* Criar projeto **Laravel 13 monólito** na raiz (PHP 8.3+).
-* Vue 3 SPA em `resources/js/` — Vite, Vue Router, `vite-plugin-pwa`.
-* Tailwind CSS + shadcn-vue (componentes UI).
-* Configurar MySQL e Redis.
-* Criar migrations principais (`speedway_payloads`, `speedway_races`, `collector_statuses`).
-* Criar endpoint receptor `POST /api/collector/speedway`.
-* Criar `ProcessSpeedwayPayloadJob`.
-* Conectar Playwright Collector (Node 24) ao endpoint.
-* Rodar collector em VPS 24h.
-* Endpoints mínimos de leitura (`GET /api/collector/status`, `GET /api/races`).
-* Telas Vue: status collector + lista de corridas.
-* ~~`docker-compose.yml` (web Laravel+nginx, mysql, redis, queue, collector Playwright — Coolify)~~ — concluído.
-* ~~Criar Playwright Collector~~ — concluído (Fase 0).
-* ~~Criar script de login / storageState~~ — concluído (Fase 0).
+* ~~Criar projeto **Laravel 13 monólito** na raiz (PHP 8.3+).~~ — concluído
+* ~~Vue 3 SPA em `resources/js/` — Vite, Vue Router, `vite-plugin-pwa`.~~ — concluído
+* ~~Tailwind CSS + shadcn-vue (componentes UI).~~ — concluído
+* ~~Configurar MySQL e Redis.~~ — concluído
+* ~~Criar migrations principais (`speedway_payloads`, `speedway_races`, `collector_statuses`).~~ — concluído
+* ~~Criar endpoint receptor `POST /api/collector/speedway`.~~ — concluído
+* ~~Criar `ProcessSpeedwayPayloadJob`.~~ — concluído
+* ~~Conectar Playwright Collector (Node 24) ao endpoint.~~ — concluído
+* ~~Rodar collector em VPS 24h.~~ — concluído (Coolify, 2026-06-18)
+* ~~Endpoints mínimos de leitura (`GET /api/collector/status`, `GET /api/races`).~~ — concluído
+* ~~Telas Vue: status collector + lista de corridas.~~ — concluído
+* ~~`docker-compose.yml` (web, mysql, redis, queue, collector — Coolify).~~ — concluído
+* ~~Criar Playwright Collector~~ — concluído (Fase 0)
+* ~~Criar script de login / storageState~~ — concluído (Fase 0)
 
 ## Fase 2 — Corridas e Métricas
 

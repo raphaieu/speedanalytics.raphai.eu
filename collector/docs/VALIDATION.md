@@ -121,14 +121,14 @@ Ciclos pending→settled completos: 3
 
 ## Deploy produção (Coolify / Docker Compose)
 
-Checklist para coleta 24h em produção (stack em `docker-compose.yml`):
+Checklist validado em **speedanalytics.raphai.eu** (2026-06-18):
 
-- [ ] Resource **Docker Compose** no Coolify apontando para este repositório
-- [ ] Variáveis de `.env.coolify.example` configuradas (incl. `SPEEDWAY_COLLECTOR_TOKEN`)
-- [ ] Domínio atribuído ao serviço **`web`**; migrations: `php artisan migrate --force`
-- [ ] `npm run login` no PC → copiar `storage/bbtips-storage-state.json` para volume do collector (`/app/storage/`)
-- [ ] Serviço **collector** healthy; monitorar `needs_login` / `stale` (> 10 min)
-- [ ] Payloads enviados ao backend via `POST /api/collector/speedway` (Fase 1 ✓)
+- [x] Resource **Docker Compose** no Coolify apontando para este repositório
+- [x] Variáveis de `.env.coolify.example` configuradas (incl. `SPEEDWAY_COLLECTOR_TOKEN`)
+- [x] Domínio no serviço **`web`**; migrations executadas
+- [x] `bbtips-storage-state.json` no volume do collector
+- [x] Serviço **collector** estável; coleta 24/7
+- [x] Payloads enviados ao backend via `POST /api/collector/speedway`
 
 Alternativa legada: Node 24 + `pm2`/`systemd` no host (sem Docker).
 
@@ -144,10 +144,6 @@ Alternativa legada: Node 24 + `pm2`/`systemd` no host (sem Docker).
 
 ---
 
-## Próximo passo — Fase 1
+## Próximo passo — Fase 2
 
-Fase 0 **concluída**. Backend Laravel e deploy Coolify documentados:
-
-1. Deploy via Coolify — [README.md](../../README.md#docker--coolify-produção)
-2. ~~Endpoint `POST /api/collector/speedway` + job de processamento~~ ✓
-3. ~~App Laravel 13 monólito + Vue SPA~~ ✓ (em evolução — PWA pendente)
+Fases 0 e 1 **concluídas**. Seguir para métricas, setups e demo — [PRD.md](../../PRD.md).
