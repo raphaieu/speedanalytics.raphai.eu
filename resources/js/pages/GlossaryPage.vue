@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 
 type GlossaryItem = {
   term: string;
@@ -41,29 +35,27 @@ const raceConcepts: GlossaryItem[] = [
 const forecastConcepts: GlossaryItem[] = [
   {
     term: 'Forecast por odds',
-    description: 'Primeiros 2 pilotos pela menor odd pré-corrida.',
-    formula: 'forecast = 1º + 2º menor odd',
-    example: 'Odds 3.20|8.00|2.45|5.00 -> forecast 3-1',
-  },
-  {
-    term: 'Tricast por odds',
-    description: 'Primeiros 3 pilotos pela menor odd pré-corrida.',
-    formula: 'tricast = 1º + 2º + 3º menor odd',
+    description: 'Previsão do 1º e 2º colocados com base nos dois pilotos de menor odd pré-corrida, nessa ordem.',
+    formula: 'forecast = [1º menor odd, 2º menor odd]',
+    example: 'Odds 3.20|8.00|2.45|5.00 → forecast 3-1 (posições 3 e 1 têm as menores odds).',
   },
   {
     term: 'Forecast hit',
-    description: 'Acerto quando o primeiro do forecast é o vencedor.',
-    formula: 'forecast_hit = (winner_position === forecast[0])',
+    description: 'Acerto quando o resultado real do forecast (1º e 2º colocados) coincide com a previsão por odds, na ordem exata.',
+    formula: 'forecast_hit = (real_1º === forecast_1º) e (real_2º === forecast_2º)',
+    example: 'Previsão 3-1 e resultado 3-1 → hit. Resultado 3-2 → miss.',
   },
   {
-    term: 'Tricast winner hit',
-    description: 'Acerto quando o primeiro do tricast é o vencedor.',
-    formula: 'tricast_winner_hit = (winner_position === tricast[0])',
+    term: 'Tricast por odds',
+    description: 'Previsão do 1º, 2º e 3º colocados com base nos três pilotos de menor odd pré-corrida, nessa ordem.',
+    formula: 'tricast = [1º, 2º e 3º menor odd]',
+    example: 'Odds 2.45|3.10|6.00|9.00 → tricast 1-2-3.',
   },
   {
-    term: 'Tricast exact hit',
-    description: 'Acerto apenas quando existe ordem real completa e bate 1º, 2º e 3º.',
-    formula: 'tricast_exact_hit = (tricast_previsto === tricast_real_completo)',
+    term: 'Tricast hit',
+    description: 'Acerto quando o resultado real do tricast (1º, 2º e 3º colocados) coincide com a previsão por odds, na ordem exata.',
+    formula: 'tricast_hit = (real_1º === tricast_1º) e (real_2º === tricast_2º) e (real_3º === tricast_3º)',
+    example: 'Previsão 1-2-3 e resultado 1-2-3 → hit. Resultado 1-2-4 → miss.',
   },
 ];
 
@@ -74,24 +66,35 @@ const analyticsConcepts: GlossaryItem[] = [
     formula: 'win_rate = (wins / total) * 100',
   },
   {
+    term: 'Stake',
+    description: 'Valor apostado em cada corrida nas simulações de P/L e ROI. O sistema assume stake fixa — por padrão, 1 unidade por aposta.',
+    example: 'Stake 1 em 100 corridas → total apostado = 100 unidades.',
+  },
+  {
     term: 'P/L (Profit and Loss)',
-    description: 'Lucro/prejuízo total da simulação com stake fixa.',
+    description: 'Lucro ou prejuízo total da simulação com stake fixa.',
     formula: 'P/L = soma dos lucros e perdas por corrida',
   },
   {
     term: 'ROI teórico',
     description: 'Retorno percentual sobre o total apostado na simulação.',
     formula: 'theoretical_roi = (profit_loss / total_apostado) * 100',
-    example: 'Stake 1 por corrida -> total_apostado = total',
+    example: 'Stake 1 por corrida → total_apostado = total de corridas.',
   },
   {
     term: 'Probabilidade implícita',
-    description: 'Probabilidade implícita da odd de mercado.',
+    description: 'Probabilidade sugerida pela odd de mercado — o quanto a casa “precifica” aquele resultado.',
     formula: 'implied_probability = 1 / odd',
+    example: 'Odd 2.00 → probabilidade implícita de 50%.',
+  },
+  {
+    term: 'Edge',
+    description: 'Vantagem estatística em relação ao mercado. Edge positivo indica que o resultado observado supera o que a odd implícita sugeriria; edge negativo, o contrário.',
+    example: 'Win rate de 45% com odd média 2.00 (50% implícito) → edge de -5 p.p.',
   },
   {
     term: 'Edge vs implied',
-    description: 'Diferença entre o acerto real e a probabilidade implícita.',
+    description: 'Diferença numérica entre a taxa de acerto real e a probabilidade implícita da odd.',
     formula: 'edge = win_rate_decimal - implied_probability_decimal',
   },
   {
@@ -109,7 +112,7 @@ const analyticsConcepts: GlossaryItem[] = [
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div class="space-y-6">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Glossário</h1>
       <p class="text-sm text-muted-foreground">
@@ -117,12 +120,15 @@ const analyticsConcepts: GlossaryItem[] = [
       </p>
     </div>
 
-    <Card>
-      <CardHeader>
-        <CardTitle>Conceitos de corrida</CardTitle>
-        <CardDescription>Termos base para leitura do resultado e contexto da corrida.</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-3">
+    <section class="space-y-4">
+      <div>
+        <h2 class="text-base font-medium">Conceitos de corrida</h2>
+        <p class="text-sm text-muted-foreground">
+          Termos base para leitura do resultado e contexto da corrida.
+        </p>
+      </div>
+
+      <div class="space-y-3">
         <div
           v-for="item in raceConcepts"
           :key="item.term"
@@ -133,15 +139,20 @@ const analyticsConcepts: GlossaryItem[] = [
           <p v-if="item.formula" class="mt-1 font-mono text-xs text-muted-foreground">{{ item.formula }}</p>
           <p v-if="item.example" class="mt-1 text-xs text-muted-foreground">{{ item.example }}</p>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
 
-    <Card>
-      <CardHeader>
-        <CardTitle>Forecast e Tricast</CardTitle>
-        <CardDescription>Como o sistema calcula e valida os acertos por odds.</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-3">
+    <Separator />
+
+    <section class="space-y-4">
+      <div>
+        <h2 class="text-base font-medium">Forecast e Tricast</h2>
+        <p class="text-sm text-muted-foreground">
+          Como o sistema calcula e valida os acertos por odds.
+        </p>
+      </div>
+
+      <div class="space-y-3">
         <div
           v-for="item in forecastConcepts"
           :key="item.term"
@@ -152,15 +163,20 @@ const analyticsConcepts: GlossaryItem[] = [
           <p v-if="item.formula" class="mt-1 font-mono text-xs text-muted-foreground">{{ item.formula }}</p>
           <p v-if="item.example" class="mt-1 text-xs text-muted-foreground">{{ item.example }}</p>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
 
-    <Card>
-      <CardHeader>
-        <CardTitle>Métricas analíticas</CardTitle>
-        <CardDescription>Indicadores de performance e risco usados nas análises.</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-3">
+    <Separator />
+
+    <section class="space-y-4">
+      <div>
+        <h2 class="text-base font-medium">Métricas analíticas</h2>
+        <p class="text-sm text-muted-foreground">
+          Indicadores de performance e risco usados nas análises.
+        </p>
+      </div>
+
+      <div class="space-y-3">
         <div
           v-for="item in analyticsConcepts"
           :key="item.term"
@@ -171,7 +187,7 @@ const analyticsConcepts: GlossaryItem[] = [
           <p v-if="item.formula" class="mt-1 font-mono text-xs text-muted-foreground">{{ item.formula }}</p>
           <p v-if="item.example" class="mt-1 text-xs text-muted-foreground">{{ item.example }}</p>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   </div>
 </template>

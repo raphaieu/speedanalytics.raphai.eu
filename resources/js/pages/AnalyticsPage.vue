@@ -2,13 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { apiGet } from '@/composables/useApi';
 import { todayBr } from '@/lib/format';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 
 type AnalyticsSummary = {
   totals: {
@@ -110,16 +105,56 @@ const cards = computed(() => {
   const data = summary.value;
 
   return [
-    { label: 'Total de corridas analisadas', value: `${data?.totals.races ?? 0}` },
-    { label: 'Corridas validadas', value: `${data?.totals.validated_races ?? 0}` },
-    { label: 'Favorito venceu %', value: formatPercent(data?.favorite.win_rate) },
-    { label: 'Zebra venceu %', value: formatPercent(data?.underdog.win_rate) },
-    { label: 'Forecast hit rate', value: formatPercent(data?.forecast.hit_rate) },
-    { label: 'Tricast hit rate', value: formatPercent(data?.tricast.hit_rate) },
-    { label: 'ROI teórico do favorito', value: formatPercent(data?.favorite.theoretical_roi) },
-    { label: 'Odd média vencedora', value: formatDecimal(data?.odds.average_winner_odd, 2) },
-    { label: 'Spread médio', value: formatDecimal(data?.odds.average_spread, 2) },
-    { label: 'Margem média da casa', value: formatPercent(data?.odds.average_house_margin) },
+    {
+      label: 'Total de corridas analisadas',
+      shortLabel: 'Total analisadas',
+      value: `${data?.totals.races ?? 0}`,
+    },
+    {
+      label: 'Corridas validadas',
+      shortLabel: 'Validadas',
+      value: `${data?.totals.validated_races ?? 0}`,
+    },
+    {
+      label: 'Favorito venceu %',
+      shortLabel: 'Favorito %',
+      value: formatPercent(data?.favorite.win_rate),
+    },
+    {
+      label: 'Zebra venceu %',
+      shortLabel: 'Zebra %',
+      value: formatPercent(data?.underdog.win_rate),
+    },
+    {
+      label: 'Forecast hit rate',
+      shortLabel: 'Forecast',
+      value: formatPercent(data?.forecast.hit_rate),
+    },
+    {
+      label: 'Tricast hit rate',
+      shortLabel: 'Tricast',
+      value: formatPercent(data?.tricast.hit_rate),
+    },
+    {
+      label: 'ROI teórico do favorito',
+      shortLabel: 'ROI favorito',
+      value: formatPercent(data?.favorite.theoretical_roi),
+    },
+    {
+      label: 'Odd média vencedora',
+      shortLabel: 'Odd média',
+      value: formatDecimal(data?.odds.average_winner_odd, 2),
+    },
+    {
+      label: 'Spread médio',
+      shortLabel: 'Spread',
+      value: formatDecimal(data?.odds.average_spread, 2),
+    },
+    {
+      label: 'Margem média da casa',
+      shortLabel: 'Margem casa',
+      value: formatPercent(data?.odds.average_house_margin),
+    },
   ];
 });
 
@@ -216,7 +251,7 @@ onMounted(loadSummary);
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div class="space-y-6">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Análises</h1>
       <p class="text-sm text-muted-foreground">
@@ -225,83 +260,101 @@ onMounted(loadSummary);
       </p>
     </div>
 
-    <Card>
-      <CardHeader class="pb-3">
-        <CardTitle class="text-base">Filtros</CardTitle>
-        <CardDescription>Refine o recorte das corridas analisadas.</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-3">
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="item in periodButtons"
-            :key="item.key"
-            type="button"
-            class="rounded-md border px-3 py-1.5 text-sm transition"
-            :class="
-              period === item.key
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-input bg-background text-foreground hover:bg-accent'
-            "
-            @click="period = item.key"
-          >
-            {{ item.label }}
-          </button>
-        </div>
+    <section class="space-y-3">
+      <div>
+        <h2 class="text-base font-medium">Filtros</h2>
+        <p class="text-sm text-muted-foreground">Refine o recorte das corridas analisadas.</p>
+      </div>
 
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input
-            v-model="onlyValidated"
-            type="checkbox"
-            class="h-4 w-4 rounded border-input"
-          />
-          Somente corridas validadas
-        </label>
-      </CardContent>
-    </Card>
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="item in periodButtons"
+          :key="item.key"
+          type="button"
+          class="rounded-md border px-3 py-1.5 text-sm transition"
+          :class="
+            period === item.key
+              ? 'border-primary bg-primary text-primary-foreground'
+              : 'border-input bg-background text-foreground hover:bg-accent'
+          "
+          @click="period = item.key"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input
+          v-model="onlyValidated"
+          type="checkbox"
+          class="h-4 w-4 rounded border-input"
+        />
+        Somente corridas validadas
+      </label>
+    </section>
+
+    <Separator />
 
     <p v-if="loading" class="text-sm text-muted-foreground">Carregando resumo analítico…</p>
     <p v-else-if="error" class="text-sm text-destructive">{{ error }}</p>
-    <p v-else-if="isEmpty" class="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+    <p
+      v-else-if="isEmpty"
+      class="py-8 text-center text-sm text-muted-foreground"
+    >
       Nenhuma corrida encontrada para os filtros atuais.
     </p>
 
-    <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <Card v-for="card in cards" :key="card.label">
+    <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <Card v-for="card in cards" :key="card.label" class="min-w-0">
         <CardContent class="pt-4">
-          <p class="text-xs text-muted-foreground">{{ card.label }}</p>
-          <p class="text-2xl font-semibold tabular-nums">{{ card.value }}</p>
+          <p
+            class="truncate text-xs text-muted-foreground sm:hidden"
+            :title="card.label"
+          >
+            {{ card.shortLabel }}
+          </p>
+          <p class="hidden text-xs text-muted-foreground sm:block" :title="card.label">
+            {{ card.label }}
+          </p>
+          <p class="text-xl font-semibold tabular-nums sm:text-2xl">{{ card.value }}</p>
         </CardContent>
       </Card>
     </div>
 
-    <Card v-if="!loading && !error">
-      <CardHeader>
-        <CardTitle>Favorito por faixa de odd</CardTitle>
-        <CardDescription>
-          Ajuda a identificar em quais faixas o favorito tende a performar melhor ou pior.
-        </CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <div v-if="bandsAreEmpty" class="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+    <template v-if="!loading && !error">
+      <Separator />
+
+      <section class="space-y-4">
+        <div>
+          <h2 class="text-base font-medium">Favorito por faixa de odd</h2>
+          <p class="text-sm text-muted-foreground">
+            Ajuda a identificar em quais faixas o favorito tende a performar melhor ou pior.
+          </p>
+        </div>
+
+        <div
+          v-if="bandsAreEmpty"
+          class="py-6 text-center text-sm text-muted-foreground"
+        >
           Sem corridas suficientes para análise por faixa de odd nos filtros atuais.
         </div>
 
-        <div v-else class="space-y-3">
-          <div class="grid gap-2 sm:grid-cols-3">
-            <div class="rounded-md border p-3">
-              <p class="text-xs text-muted-foreground">Corridas na análise</p>
+        <div v-else class="space-y-4">
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div class="min-w-0 rounded-md border p-3">
+              <p class="truncate text-xs text-muted-foreground">Corridas na análise</p>
               <p class="text-lg font-semibold tabular-nums">
                 {{ favoriteBands?.summary.total_races ?? 0 }}
               </p>
             </div>
-            <div class="rounded-md border p-3">
-              <p class="text-xs text-muted-foreground">Faixas lucrativas</p>
+            <div class="min-w-0 rounded-md border p-3">
+              <p class="truncate text-xs text-muted-foreground">Faixas lucrativas</p>
               <p class="text-lg font-semibold tabular-nums">
                 {{ favoriteBands?.summary.profitable_bands ?? 0 }}
               </p>
             </div>
-            <div class="rounded-md border p-3">
-              <p class="text-xs text-muted-foreground">Melhor faixa (ROI)</p>
+            <div class="col-span-2 min-w-0 rounded-md border p-3 sm:col-span-1">
+              <p class="truncate text-xs text-muted-foreground">Melhor faixa (ROI)</p>
               <p class="text-sm font-semibold">
                 {{ favoriteBands?.summary.best_band?.band ?? '—' }}
                 <span v-if="favoriteBands?.summary.best_band" class="tabular-nums">
@@ -361,41 +414,41 @@ onMounted(loadSummary);
             </table>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </section>
 
-    <Card v-if="!loading && !error">
-      <CardHeader>
-        <CardTitle>Zebra por faixa de odd</CardTitle>
-        <CardDescription>
-          Mostra a performance do piloto com maior odd pré-corrida. Aqui aparecem as odds altas,
-          como 5.00, 8.00 e 10.00+.
-        </CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-4">
+      <Separator />
+
+      <section class="space-y-4">
+        <div>
+          <h2 class="text-base font-medium">Zebra por faixa de odd</h2>
+          <p class="text-sm text-muted-foreground">
+            Performance do piloto com maior odd pré-corrida — faixas altas como 5.00, 8.00 e 10.00+.
+          </p>
+        </div>
+
         <div
           v-if="underdogBandsAreEmpty"
-          class="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground"
+          class="py-6 text-center text-sm text-muted-foreground"
         >
           Sem corridas suficientes para análise da zebra por faixa de odd nos filtros atuais.
         </div>
 
-        <div v-else class="space-y-3">
-          <div class="grid gap-2 sm:grid-cols-3">
-            <div class="rounded-md border p-3">
-              <p class="text-xs text-muted-foreground">Corridas na análise</p>
+        <div v-else class="space-y-4">
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div class="min-w-0 rounded-md border p-3">
+              <p class="truncate text-xs text-muted-foreground">Corridas na análise</p>
               <p class="text-lg font-semibold tabular-nums">
                 {{ underdogBands?.summary.total_races ?? 0 }}
               </p>
             </div>
-            <div class="rounded-md border p-3">
-              <p class="text-xs text-muted-foreground">Faixas lucrativas</p>
+            <div class="min-w-0 rounded-md border p-3">
+              <p class="truncate text-xs text-muted-foreground">Faixas lucrativas</p>
               <p class="text-lg font-semibold tabular-nums">
                 {{ underdogBands?.summary.profitable_bands ?? 0 }}
               </p>
             </div>
-            <div class="rounded-md border p-3">
-              <p class="text-xs text-muted-foreground">Melhor faixa (ROI)</p>
+            <div class="col-span-2 min-w-0 rounded-md border p-3 sm:col-span-1">
+              <p class="truncate text-xs text-muted-foreground">Melhor faixa (ROI)</p>
               <p class="text-sm font-semibold">
                 {{ underdogBands?.summary.best_band?.band ?? '—' }}
                 <span v-if="underdogBands?.summary.best_band" class="tabular-nums">
@@ -455,7 +508,7 @@ onMounted(loadSummary);
             </table>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </section>
+    </template>
   </div>
 </template>
