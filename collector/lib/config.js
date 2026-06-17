@@ -31,6 +31,8 @@ export const config = {
   speedwayFiltroExibicao: process.env.SPEEDWAY_FILTRO_EXIBICAO ?? 'Odd_Todas',
   speedwayHoras: process.env.SPEEDWAY_HORAS ?? 'Horas48',
   speedwayFuturo: (process.env.SPEEDWAY_FUTURO ?? 'true').toLowerCase() === 'true',
+  collectorEndpoint: process.env.SPEEDWAY_COLLECTOR_ENDPOINT ?? null,
+  collectorToken: process.env.SPEEDWAY_COLLECTOR_TOKEN ?? null,
 };
 
 export function parseSpeedwayUrl(url) {

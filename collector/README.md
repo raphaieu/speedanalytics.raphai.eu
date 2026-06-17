@@ -124,6 +124,19 @@ npm run collect
 
 Evidência completa: [docs/VALIDATION.md](docs/VALIDATION.md)
 
+## Deploy produção (Coolify / Docker Compose)
+
+Em produção o collector roda como serviço **`collector`** no `docker-compose.yml` (Playwright headless). Ver guia completo: [README.md](../README.md#docker--coolify-produção) · [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+
+**Sessão BB Tips na VPS:** login manual no PC (`npm run login`) → copiar `storage/bbtips-storage-state.json` para `/app/storage/` do container collector. Não há credenciais no `.env`.
+
+Variáveis relevantes (`collector/.env` ou Environment Variables do Coolify):
+
+```env
+SPEEDWAY_COLLECTOR_ENDPOINT=http://web/api/collector/speedway
+SPEEDWAY_COLLECTOR_TOKEN=   # igual ao .env raiz / Coolify
+```
+
 ## Próximo passo (Fase 1)
 
-Conectar ao **Laravel 13** via `POST /api/collector/speedway`. Arquitetura: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) · [CHANGELOG.md](../CHANGELOG.md).
+Integração com Laravel **concluída** (`POST /api/collector/speedway`). Pendente: deploy Coolify + PWA. Ver [CHANGELOG.md](../CHANGELOG.md).

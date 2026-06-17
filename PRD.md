@@ -240,7 +240,7 @@ Backend processa corridas pending/settled
 ```txt
 VPS
 ├── Laravel API
-├── PostgreSQL
+├── MySQL
 ├── Redis
 ├── Queue Worker
 └── Speedway Collector
@@ -1460,7 +1460,7 @@ Backend:
 Laravel 13 (PHP 8.3+)
 
 Banco:
-PostgreSQL
+MySQL 8.4
 
 Cache/Fila:
 Redis
@@ -1487,7 +1487,8 @@ Collector:
 Node.js 24 + Playwright (serviço separado em collector/)
 
 Deploy:
-VPS — docker-compose, Laravel monólito, um subdomínio
+  Coolify — docker-compose (web, queue, collector, mysql, redis)
+  Domínio: speedanalytics.raphai.eu
 
 Formato mobile:
 PWA (requisito — RNF006)
@@ -1520,9 +1521,12 @@ speedway-analytics/
 │   ├── collector.js
 │   └── storage/
 ├── docker/
-├── docs/
-│   └── ARCHITECTURE.md
-├── docker-compose.yml
+│   ├── app/Dockerfile
+│   ├── collector/Dockerfile
+│   ├── nginx/
+│   └── supervisor/
+├── docker-compose.yml         # Coolify
+├── .env.coolify.example
 ├── vite.config.js
 ├── package.json
 ├── CHANGELOG.md
@@ -1692,7 +1696,7 @@ Ter uma base histórica confiável e coleta contínua em produção.
 ### Escopo
 
 * Criar projeto Laravel.
-* Criar banco PostgreSQL.
+* Criar banco MySQL.
 * Criar tabelas principais.
 * Criar Playwright Browser Collector.
 * Criar script de login manual.
@@ -2137,7 +2141,7 @@ Produto pode ser interpretado como promessa de lucro.
 * Criar projeto **Laravel 13 monólito** na raiz (PHP 8.3+).
 * Vue 3 SPA em `resources/js/` — Vite, Vue Router, `vite-plugin-pwa`.
 * Tailwind CSS + shadcn-vue (componentes UI).
-* Configurar PostgreSQL e Redis.
+* Configurar MySQL e Redis.
 * Criar migrations principais (`speedway_payloads`, `speedway_races`, `collector_statuses`).
 * Criar endpoint receptor `POST /api/collector/speedway`.
 * Criar `ProcessSpeedwayPayloadJob`.
@@ -2145,7 +2149,7 @@ Produto pode ser interpretado como promessa de lucro.
 * Rodar collector em VPS 24h.
 * Endpoints mínimos de leitura (`GET /api/collector/status`, `GET /api/races`).
 * Telas Vue: status collector + lista de corridas.
-* `docker-compose.yml` (nginx, app Laravel, postgres, redis, queue).
+* ~~`docker-compose.yml` (web Laravel+nginx, mysql, redis, queue, collector Playwright — Coolify)~~ — concluído.
 * ~~Criar Playwright Collector~~ — concluído (Fase 0).
 * ~~Criar script de login / storageState~~ — concluído (Fase 0).
 

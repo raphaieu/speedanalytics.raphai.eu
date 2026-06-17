@@ -9,6 +9,54 @@ import {
 } from './session-status.js';
 import { summarizePayload, updateRacesIndex } from './parse-races.js';
 
+async function sendPayloadToBackend(record) {
+  if (!config.collectorEndpoint || !config.collectorToken) {
+    return { sent: false, reason: 'endpoint_or_token_not_configured' };
+  }
+
+  try {
+    const response = await fetch(config.collectorEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'x-speedway-collector-token': config.collectorToken,
+      },
+      body: JSON.stringify({
+        source: record.source,
+        mode: record.mode,
+        source_url: record.source_url,
+        captured_at: record.captured_at,
+        data_atualizacao: record.data_atualizacao,
+        payload: record.payload,
+        summary: record.summary,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      logger.warn('Backend rejeitou payload speedway', {
+        status: response.status,
+        body: body.slice(0, 500),
+      });
+      return { sent: false, reason: 'http_error', status: response.status };
+    }
+
+    const result = await response.json();
+    logger.info('Payload enviado ao backend', {
+      payload_id: result.payload_id ?? null,
+      endpoint: config.collectorEndpoint,
+    });
+    return { sent: true, payload_id: result.payload_id ?? null };
+  } catch (error) {
+    logger.error('Falha ao enviar payload ao backend', {
+      endpoint: config.collectorEndpoint,
+      error: error.message,
+    });
+    return { sent: false, reason: 'network_error', error: error.message };
+  }
+}
+
 function buildPayloadFilename(capturedAt) {
   const safe = capturedAt.replace(/[:.]/g, '-');
   return path.join(config.payloadDir, `${safe}.json`);
@@ -119,6 +167,7 @@ export function attachSpeedwayInterceptor(page, state) {
     };
 
     const filePath = savePayloadFile(record);
+    const backendResult = await sendPayloadToBackend(record);
 
     state.payloadCount += 1;
     state.lastPayloadAt = capturedAt;
@@ -142,6 +191,8 @@ export function attachSpeedwayInterceptor(page, state) {
         last_race_count: summary.race_count,
         last_pending_count: summary.pending_count,
         last_settled_count: summary.settled_count,
+        backend_sent: backendResult.sent,
+        backend_payload_id: backendResult.payload_id ?? null,
       },
     });
 

@@ -1,6 +1,6 @@
 # Arquitetura — Speedway Analytics
 
-Última atualização: 2026-06-17
+Última atualização: 2026-06-18
 
 ## Visão geral
 
@@ -8,15 +8,21 @@
 
 ```txt
                     ┌──────────────────────────────────────────┐
-                    │  speedanalytics.raphai.eu                │
+                    │  Coolify (Traefik/Caddy + SSL)           │
+                    │  speedanalytics.raphai.eu → serviço web  │
+                    └────────────────────┬─────────────────────┘
+                                         │
+                    ┌────────────────────▼─────────────────────┐
                     │  docker-compose.yml                      │
                     │                                          │
-  BB Tips ◄──►      │  ┌────────┐      ┌─────────────────────┐ │
-  Playwright        │  │ nginx  │ ───► │ Laravel 13 (único)  │ │
-  Collector ────────┼─►│        │      │  /api/*  → API JSON │ │
-  POST /api/...     │  └────────┘      │  /*      → Vue SPA  │ │
-                    │                  │  PostgreSQL + Redis │ │
-                    │                  └─────────────────────┘ │
+  BB Tips ◄──►      │  ┌────────┐  ┌───────┐  ┌─────────────┐ │
+  Playwright        │  │  web   │  │ queue │  │  collector  │ │
+  Collector ────────┼─►│ nginx  │  │ worker│  │  (headless) │ │
+  POST /api/...     │  │ + PHP  │  └───┬───┘  └──────┬──────┘ │
+                    │  └────┬───┘      │             │        │
+                    │       │     ┌────▼────┐  ┌─────▼─────┐  │
+                    │       └────►│  mysql  │  │   redis   │  │
+                    │             └─────────┘  └───────────┘  │
                     └──────────────────────────────────────────┘
 
 collector/  (Node 24 + Playwright) — serviço irmão, não dentro do PHP
@@ -33,17 +39,17 @@ collector/  (Node 24 + Playwright) — serviço irmão, não dentro do PHP
 
 | Camada | Tecnologia |
 |--------|------------|
-| App principal | **Laravel 13** monólito (PHP 8.3+) |
+| App principal | **Laravel 13** monólito (PHP 8.4+ em produção) |
 | Frontend | **Vue 3** SPA em `resources/js/` |
 | Build | **Vite** (integrado ao Laravel) + `vite-plugin-pwa` |
 | Estilo | **Tailwind CSS** |
 | Componentes UI | **shadcn-vue** (adotar progressivamente) |
 | Auth SPA | Laravel **Sanctum** |
 | Collector | **Node.js 24** + Playwright (`collector/`) |
-| Banco | PostgreSQL 16+ |
+| Banco | MySQL 8.4 |
 | Fila / cache | Redis 7+ |
 | Gráficos | ECharts ou Recharts (Fase 3) |
-| Deploy | VPS — `docker-compose`, um subdomínio |
+| Deploy | **Coolify** — Docker Compose, um subdomínio (`speedanalytics.raphai.eu`) |
 
 ---
 
@@ -169,12 +175,12 @@ Runtime/deploy Node extra além do collector. Descartado.
 
 | # | Entrega | Prioridade |
 |---|---------|------------|
-| 1 | Migrations: `speedway_payloads`, `speedway_races`, `collector_statuses`, `collector_runs` | Alta |
-| 2 | `ProcessSpeedwayPayloadJob` — portar `collector/lib/parse-races.js` | Alta |
-| 3 | Collector: POST ao backend após salvar local | Alta |
-| 4 | `docker-compose.yml` — nginx, app, postgres, redis, queue | Alta |
+| 1 | ~~Migrations: `speedway_payloads`, `speedway_races`, `collector_statuses`, `collector_runs`~~ | ✓ |
+| 2 | ~~`ProcessSpeedwayPayloadJob` — portar `collector/lib/parse-races.js`~~ | ✓ |
+| 3 | ~~Collector: POST ao backend após salvar local~~ | ✓ |
+| 4 | ~~`docker-compose.yml` — mysql, redis, queue, web, collector (Coolify)~~ | ✓ |
 | 5 | `vite-plugin-pwa` — PWA install prompt | Média |
-| 6 | `php artisan speedway:import-payloads` | Média |
+| 6 | ~~`php artisan speedway:import-payloads`~~ | ✓ |
 | 7 | Auth Sanctum (quando necessário) | Baixa |
 
 ### Regras de processamento (PRD §7.10–7.11)
@@ -205,8 +211,12 @@ speedanalytics.raphai.eu/
 ├── public/                    # build Vite → public/build/
 ├── collector/                 # Node 24 — Fase 0 ✓
 ├── docker/
-│   └── nginx/default.conf
-├── docker-compose.yml
+│   ├── app/Dockerfile         # web + worker (produção)
+│   ├── collector/Dockerfile   # Playwright
+│   ├── nginx/coolify.conf
+│   └── supervisor/supervisord.conf
+├── docker-compose.yml         # Coolify
+├── .env.coolify.example
 ├── vite.config.js
 ├── package.json               # Vue, Tailwind, shadcn-vue deps
 ├── composer.json
@@ -216,28 +226,35 @@ speedanalytics.raphai.eu/
 
 ---
 
-## Deploy VPS — docker-compose
+## Deploy produção — Coolify
 
-```yaml
-# Serviços previstos (resumo)
-services:
-  nginx:        # :443 → app:9000 (PHP-FPM) ou unix socket
-  app:          # Laravel + assets buildados (public/build)
-  queue:        # php artisan queue:work
-  scheduler:    # php artisan schedule:work (opcional)
-  postgres:
-  redis:
-  collector:    # Node 24 + Playwright (ou systemd no host)
-```
+Stack definida em `docker-compose.yml`. O Coolify faz build a partir do Git, injeta variáveis de ambiente e roteia HTTPS para o serviço **`web`**.
+
+| Serviço | Imagem / build | Papel |
+|---------|----------------|-------|
+| `web` | `docker/app/Dockerfile` → target `web` | nginx + PHP-FPM, Laravel + Vue (build Vite na imagem) |
+| `queue` | `docker/app/Dockerfile` → target `worker` | `php artisan queue:work redis` |
+| `collector` | `docker/collector/Dockerfile` | Playwright headless 24/7 |
+| `mysql` | `mysql:8.4` | Banco persistente (`mysql_data`) |
+| `redis` | `redis:7-alpine` | Fila e cache (`redis_data`) |
+
+Volumes nomeados: `app_storage`, `collector_storage` (status + `storageState` BB Tips).
 
 ```txt
-https://speedanalytics.raphai.eu/          → Laravel → Vue SPA
-https://speedanalytics.raphai.eu/api/...   → Laravel → JSON
+https://speedanalytics.raphai.eu/          → serviço web → Laravel → Vue SPA
+https://speedanalytics.raphai.eu/api/...   → serviço web → Laravel → JSON
+http://web/api/collector/speedway           → rede interna (collector → Laravel)
 ```
 
-Build de produção: `npm run build` + `php artisan config:cache` na imagem ou CI.
+### Restrições Coolify
 
-O collector pode rodar no compose ou via **systemd** no host (login manual com display).
+- **Sem bind mounts** de código (`.:/var/www`) — o repositório é efêmero no build; tudo entra na imagem
+- **Sem `ports` publicados** — domínio atribuído ao serviço `web` na UI do Coolify
+- Variáveis: `.env.coolify.example` → Environment Variables do resource
+- Pós-deploy: `php artisan migrate --force` no serviço `web`
+- Sessão BB Tips: `npm run login` no PC → copiar `bbtips-storage-state.json` para volume do collector
+
+Guia operacional: [README.md](../README.md#docker--coolify-produção).
 
 ---
 

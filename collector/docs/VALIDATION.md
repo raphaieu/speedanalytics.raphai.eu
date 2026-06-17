@@ -119,17 +119,18 @@ Ciclos pending→settled completos: 3
 
 ---
 
-## Deploy VPS (produção 24h)
+## Deploy produção (Coolify / Docker Compose)
 
-Checklist para deixar coletando na VPS antes da Fase 1:
+Checklist para coleta 24h em produção (stack em `docker-compose.yml`):
 
-- [ ] Node.js **24** instalado (`node -v` → v24.x)
-- [ ] `npx playwright install chromium` + dependências de sistema do Chromium
-- [ ] `npm run login` com display (VNC/X11) — sessão não versionada
-- [ ] Process manager: `systemd` ou `pm2` para `npm run collect`
-- [ ] `.env` e `storage/` fora do git, permissões restritas
-- [ ] Monitorar: cron ou alerta se status `stale` / `needs_login` por > 10 min
-- [ ] Disco: payloads acumulam; planejar rotação ou envio ao backend (Fase 1)
+- [ ] Resource **Docker Compose** no Coolify apontando para este repositório
+- [ ] Variáveis de `.env.coolify.example` configuradas (incl. `SPEEDWAY_COLLECTOR_TOKEN`)
+- [ ] Domínio atribuído ao serviço **`web`**; migrations: `php artisan migrate --force`
+- [ ] `npm run login` no PC → copiar `storage/bbtips-storage-state.json` para volume do collector (`/app/storage/`)
+- [ ] Serviço **collector** healthy; monitorar `needs_login` / `stale` (> 10 min)
+- [ ] Payloads enviados ao backend via `POST /api/collector/speedway` (Fase 1 ✓)
+
+Alternativa legada: Node 24 + `pm2`/`systemd` no host (sem Docker).
 
 ---
 
@@ -145,9 +146,8 @@ Checklist para deixar coletando na VPS antes da Fase 1:
 
 ## Próximo passo — Fase 1
 
-Fase 0 **concluída**. Seguir para:
+Fase 0 **concluída**. Backend Laravel e deploy Coolify documentados:
 
-1. Collector 24h na VPS (feedback de volume e estabilidade).
-2. Backend **Laravel 13** (API REST) — ver [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
-3. Endpoint `POST /api/collector/speedway` + job de processamento.
-4. App **Laravel 13 monólito** + Vue SPA em `resources/js/` (Tailwind + shadcn-vue). Ver [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
+1. Deploy via Coolify — [README.md](../../README.md#docker--coolify-produção)
+2. ~~Endpoint `POST /api/collector/speedway` + job de processamento~~ ✓
+3. ~~App Laravel 13 monólito + Vue SPA~~ ✓ (em evolução — PWA pendente)

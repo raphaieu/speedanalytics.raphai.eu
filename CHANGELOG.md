@@ -6,13 +6,46 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
-### Planejado — Fase 1 (continuação)
+### Adicionado — Deploy produção (Coolify)
+
+- `docker-compose.yml` — stack completa para **Coolify**: `web`, `queue`, `collector`, `mysql`, `redis`
+- `docker/app/Dockerfile` — imagem multi-stage (build Vite + Composer + PHP 8.4-FPM + nginx/supervisor)
+- `docker/collector/Dockerfile` — Node 24 + Playwright Chromium
+- `docker/nginx/coolify.conf`, `docker/supervisor/supervisord.conf`
+- `.env.coolify.example` — variáveis para Environment Variables do Coolify
+- `.dockerignore` — otimiza build sem bind mounts
+- `bootstrap/app.php` — `trustProxies(at: '*')` para Traefik/Caddy do Coolify
+
+### Alterado — Deploy
+
+- Compose orientado a Coolify: sem bind mounts, sem `ports` publicados, código embutido na imagem
+- Serviço público renomeado para **`web`** (nginx + PHP-FPM em container único)
+- Collector aponta para `http://web/api/collector/speedway` na rede interna
+- `.env.docker.example` — legado/manual; produção via `.env.coolify.example`
+
+### Adicionado — Fase 1 (persistência)
 
 - Migrations: `speedway_payloads`, `speedway_races`, `collector_statuses`, `collector_runs`
-- `ProcessSpeedwayPayloadJob` — portar `collector/lib/parse-races.js`
-- Collector: POST ao backend após salvar local
-- `php artisan speedway:import-payloads`
-- `docker-compose.yml`
+- Models `SpeedwayPayload`, `SpeedwayRace`
+- `SpeedwayParserService` — port de `collector/lib/parse-races.js`
+- `ProcessSpeedwayPayloadJob` — upsert pending/settled por `external_id`
+- `POST /api/collector/speedway` — valida, persiste e enfileira job
+- `GET /api/races` — paginação do histórico no MySQL
+- Collector: POST ao backend após salvar local (`SPEEDWAY_COLLECTOR_ENDPOINT`)
+- Página Vue Corridas com tabela real
+- `php artisan speedway:import-payloads` — importar JSONs locais
+- `docker-compose.yml` — MySQL 8.4, Redis 7, queue worker *(evoluído: stack Coolify completa — ver acima)*
+
+### Documentação
+
+- README — seção **Docker / Coolify** com passo a passo de deploy e sessão BB Tips
+- `docs/ARCHITECTURE.md` — diagrama, estrutura `docker/` e deploy Coolify
+- `collector/README.md` e `collector/docs/VALIDATION.md` — produção via Docker Compose / Coolify
+
+### Planejado — Fase 1 (restante)
+
+- `vite-plugin-pwa` — PWA install prompt
+- Auth Sanctum (quando necessário)
 
 ---
 
