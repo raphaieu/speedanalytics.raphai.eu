@@ -16,7 +16,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - `.dockerignore` — otimiza build sem bind mounts
 - `bootstrap/app.php` — `trustProxies(at: '*')` para Traefik/Caddy do Coolify
 
-### Alterado — Deploy
+### Corrigido — Deploy Coolify
+
+- Container `web` unhealthy — nginx Debian servia `sites-enabled/default` (`/var/www/html`) em vez do Laravel
+- Permissões de `storage/` ao montar volumes nomeados — `docker/app/entrypoint.sh`
 
 - Compose orientado a Coolify: sem bind mounts, sem `ports` publicados, código embutido na imagem
 - Serviço público renomeado para **`web`** (nginx + PHP-FPM em container único)

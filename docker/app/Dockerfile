@@ -50,18 +50,28 @@ RUN composer dump-autoload --optimize --classmap-authoritative --no-dev \
 FROM runtime AS web
 
 RUN apt-get update && apt-get install -y nginx supervisor \
+    && rm -f /etc/nginx/sites-enabled/default \
+    && rm -rf /var/www/html \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/nginx/coolify.conf /etc/nginx/conf.d/default.conf
 COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 EXPOSE 80
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
     CMD curl -fsS http://127.0.0.1/up || exit 1
 
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
 
 FROM runtime AS worker
 
+COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=3", "--timeout=120"]
