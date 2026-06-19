@@ -59,6 +59,7 @@ class DemoOperationController extends Controller
             'journal_tags' => ['nullable', 'array'],
             'journal_tags.*' => ['string', 'max:64'],
             'emotion' => ['nullable', 'string', 'max:64'],
+            'context_snapshot_json' => ['nullable', 'array'],
         ]);
 
         if (isset($validated['note'])) {
@@ -67,6 +68,10 @@ class DemoOperationController extends Controller
                 'emotion' => $validated['emotion'] ?? null,
                 'tags_json' => $validated['journal_tags'] ?? null,
             ];
+        }
+
+        if ($validated['market_type'] === 'winner' && ! isset($validated['entry_odd'])) {
+            return response()->json(['message' => 'Winner exige odd de entrada.'], 422);
         }
 
         try {

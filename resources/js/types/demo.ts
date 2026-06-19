@@ -15,6 +15,8 @@ export type DemoJournal = {
   created_at: string | null;
 };
 
+export type PricingStatus = 'observed' | 'estimated' | 'manual' | 'unavailable';
+
 export type DemoOperation = {
   id: number;
   speedway_race_id: number | null;
@@ -49,3 +51,53 @@ export type DemoOperation = {
 export type DemoAccountResponse = { data: DemoAccount };
 export type DemoOperationsResponse = { data: DemoOperation[] };
 export type DemoOperationResponse = { data: DemoOperation };
+
+export type QuickEntry = {
+  id: string;
+  label: string;
+  tier: 'primary' | 'alternate';
+  market_type: 'winner' | 'forecast' | 'tricast';
+  bet_type: 'single';
+  order: string;
+  entry_position?: number;
+  entry_odd: number | null;
+  pricing_status: PricingStatus;
+  helper_text?: string | null;
+};
+
+export type PendingDemoRace = {
+  id: number;
+  external_id: string;
+  status: 'pending';
+  schedule_slot: string | null;
+  race_hour: number | null;
+  race_minute: number | null;
+  pilot_odds_raw: string | null;
+  pilot_odds: Array<{ position: number; odd: string }>;
+  rank_1_position: number | null;
+  rank_1_odd: string | null;
+  rank_2_position: number | null;
+  rank_2_odd: string | null;
+  rank_3_position: number | null;
+  rank_3_odd: string | null;
+  rank_4_position: number | null;
+  rank_4_odd: string | null;
+  favorite_position: number | null;
+  favorite_odd: string | null;
+  underdog_position: number | null;
+  underdog_odd: string | null;
+  market_rank_forecast_order: string | null;
+  market_rank_tricast_order: string | null;
+  quick_entries: QuickEntry[];
+};
+
+export type PendingDemoRacesResponse = {
+  data: PendingDemoRace[];
+  meta: { total: number; limit: number };
+};
+
+export type QuickPresetId =
+  | 'winner_favorite'
+  | 'winner_underdog'
+  | 'forecast_suggested'
+  | 'tricast_suggested';

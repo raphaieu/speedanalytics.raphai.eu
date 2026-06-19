@@ -8,7 +8,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Adicionado — Demo manual e diário operacional (MVP 3 parcial)
 
-Primeira fatia do simulador demo: operações manuais, banca fictícia e diário — **sem** Strategy Engine, automação nem pricing automático de forecast/tricast.
+Primeira fatia do simulador demo: operações manuais, banca fictícia e diário — **sem** Strategy Engine, automação, tickets compostos (`demo_operation_legs`) nem captura automática de odds forecast/tricast da casa.
 
 - **Domínio e persistência**
   - Tabelas `demo_accounts`, `demo_operations`, `bankroll_transactions`, `journal_entries`
@@ -18,23 +18,59 @@ Primeira fatia do simulador demo: operações manuais, banca fictícia e diário
 - **Serviços**
   - `DemoAccountService` — conta manual padrão e ajuste de banca (`manual_adjustment`)
   - `DemoManualOperationService` — criar operação manual, listar, liquidar por corrida (`settleManualOperation`) ou liquidação explícita green/red/void (`settleOperationExplicitly`), journal vinculado
+  - `MarketOddEstimatorService` — odd estimada heurística para forecast/tricast (produto das odds pré-corrida × multiplicador configurável)
+  - `DemoQuickEntryBuilder` — atalhos `quick_entries` por corrida pending (favorito, zebra, forecast/tricast sugeridos)
   - Stake debita banca na abertura; liquidação credita retorno (green/void) via `bankroll_transactions`
   - Campo `after_stop` persistido (flag manual até existir `RiskSession`)
 - **API** (`/api/demo/*`)
   - `GET /api/demo/account` — conta demo e saldo atual
   - `POST /api/demo/account/adjust-bankroll` — ajuste manual de banca
+  - `GET /api/demo/pending-races` — próximas corridas `pending` com odds, ranks e `quick_entries`
   - `GET /api/demo/operations?status=open|settled` — listar operações manuais
-  - `POST /api/demo/operations` — criar operação (journal opcional via `note`)
+  - `POST /api/demo/operations` — criar operação (journal opcional via `note`, `context_snapshot_json`)
   - `POST /api/demo/operations/{id}/settle` — liquidar como `win` | `loss` | `void`
   - `POST /api/demo/operations/{id}/journal` — entrada de diário avulsa
-  - `DemoPresenter` para serialização JSON
-- **UI**
-  - Página `/demo/manual` — banca, ajuste, formulário de entrada, abas abertas/resolvidas, modal de liquidação
+  - `DemoPresenter` e `SpeedwayRacePresenter::pendingForDemo()` para serialização JSON
+- **UI** (`/demo/manual`)
+  - Banca demo + ajuste manual
+  - Carrossel de **próximas corridas pending** (odds P1–P4, rank 1, forecast/tricast teóricos)
+  - Seleção de corrida → preenche `speedway_race_id` e `context_snapshot_json`
+  - Painel **Corrida selecionada** com atalhos principais:
+    - Winner favorito (rank 1, odd observada)
+    - Winner zebra (rank 4, odd observada)
+    - Forecast sugerido (`market_rank_forecast_order`, ex.: `Forecast 4-1`)
+    - Tricast sugerido (`market_rank_tricast_order`, ex.: `Tricast 4-1-3`)
+  - Seção **Outras ordens** com forecasts alternativos (quando diferentes do sugerido)
+  - Formulário de nova operação, abas abertas/resolvidas, modal de liquidação green/red/void
   - Link **Demo** no header da SPA
   - `apiPost()` em `useApi.ts`; tipos em `resources/js/types/demo.ts`
 - **Testes**
-  - `DemoManualOperationFlowTest` — fluxo de serviço (criar, ajustar banca, liquidar automático e explícito)
-  - `DemoManualApiTest` — contratos da API demo
+  - `DemoManualOperationFlowTest` — fluxo de serviço
+  - `DemoManualApiTest` — contratos da API demo, pending races, `quick_entries`, `pricing_status`
+  - `MarketOddEstimatorServiceTest` — estimativa forecast/tricast e casos inválidos
+
+### Adicionado — Pricing de entrada no demo manual (`pricing_status`)
+
+Decisão de produto: no MVP, Winner, Forecast e Tricast são operações **`single` lógicas** (não combo/ticket composto).
+
+- **`pricing_status`** em `entry_payload_json`:
+  - `observed` — winner com odd pré-corrida do piloto
+  - `estimated` — forecast/tricast com odd heurística do `MarketOddEstimatorService`
+  - `manual` — usuário sobrescreveu a odd (ex.: odd real vista na Bet365)
+  - `unavailable` — sem odd informada (potencial não calculado; criação ainda permitida)
+- Fórmulas heurísticas provisórias (`config/speedway.php` → `market_odd_estimation`):
+  - Forecast: `odd₁ × odd₂ × 0.65`
+  - Tricast: `odd₁ × odd₂ × odd₃ × 0.35`
+- Winner **exige** `entry_odd` na API; forecast/tricast aceitam odd vazia
+- Payload inclui `estimated_entry_odd` e `selected_quick_entry_label` quando aplicável
+- UI exibe hint sob o campo de odd: Observada / Estimativa editável / Manual / Sem odd
+
+### Alterado — Demo manual: UX de seleção e atalhos
+
+- Forecast e tricast **não** mudam mais automaticamente para `bet_type=combo`
+- Atalhos rápidos usam rótulos alinhados ao card da corrida (`Forecast 4-1`, não “rank 1-2”)
+- Tipo de aposta fixo como **Single (MVP)** no formulário
+- Zebra nos atalhos usa **rank 4** (maior odd pré-corrida), não `underdog_position` legado
 
 ### Adicionado — Ranking por odds e ordens de mercado em SpeedwayRace
 
@@ -76,7 +112,11 @@ Primeira fatia do simulador demo: operações manuais, banca fictícia e diário
 
 ### Documentação
 
-- README, ARCHITECTURE, CHANGELOG e PRD atualizados com demo manual, API `/api/demo/*`, página `/demo/manual` e novas colunas de ranking em `speedway_races`
+- README, ARCHITECTURE, CHANGELOG e PRD atualizados com:
+  - demo manual completo (`/demo/manual`, `/api/demo/*`)
+  - seleção de corridas pending e `quick_entries`
+  - `pricing_status`, `MarketOddEstimatorService` e regra single no MVP
+  - colunas de ranking em `speedway_races`
 - Glossário (`/glossario`) alinhado à semântica `market_rank_*` vs `result_*`
 
 ### Planejado — Fase 2+ (restante)
@@ -84,6 +124,8 @@ Primeira fatia do simulador demo: operações manuais, banca fictícia e diário
 - Strategy Engine e setups
 - Liquidação automática por job quando corrida virar `settled`
 - Gestão de risco (`RiskSession`, stop loss/win, `after_stop` automático)
+- Tickets compostos / `demo_operation_legs` e captura automática de odds da casa
+- Calibração empírica dos multiplicadores de odd estimada
 - Backtests, IA explicativa, relatório diário
 - Auth Sanctum (quando houver login de usuários)
 - Curva da banca demo e racional automático

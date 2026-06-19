@@ -2,7 +2,15 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiGet, apiPost } from '@/composables/useApi';
 import { formatDateTimeBr, formatUnits } from '@/lib/format';
-import type { DemoAccount, DemoOperation } from '@/types/demo';
+import { formatScheduleSlot, PILOT_POSITION_COLORS } from '@/lib/speedway';
+import type {
+  DemoAccount,
+  DemoOperation,
+  PendingDemoRace,
+  PricingStatus,
+  QuickEntry,
+  QuickPresetId,
+} from '@/types/demo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +40,22 @@ const account = ref<DemoAccount | null>(null);
 const openOperations = ref<DemoOperation[]>([]);
 const settledOperations = ref<DemoOperation[]>([]);
 const activeTab = ref<'open' | 'settled'>('open');
+const pendingRaces = ref<PendingDemoRace[]>([]);
+const selectedRace = ref<PendingDemoRace | null>(null);
+const contextSnapshot = ref<Record<string, unknown> | null>(null);
+
+const pricingMeta = reactive({
+  pricing_status: null as PricingStatus | null,
+  estimated_entry_odd: null as number | null,
+  selected_quick_entry_label: null as string | null,
+});
+
+const QUICK_PRESETS: Array<{ id: QuickPresetId; label: string }> = [
+  { id: 'winner_favorite', label: 'Winner favorito' },
+  { id: 'winner_underdog', label: 'Winner zebra' },
+  { id: 'forecast_suggested', label: 'Forecast sugerido' },
+  { id: 'tricast_suggested', label: 'Tricast sugerido' },
+];
 
 const bankrollForm = reactive({
   amount: '',
@@ -84,6 +108,31 @@ const displayedOperations = computed(() =>
   activeTab.value === 'open' ? openOperations.value : settledOperations.value,
 );
 
+const oddHint = computed(() => {
+  switch (pricingMeta.pricing_status) {
+    case 'observed':
+      return 'Observada (odd pré-corrida do piloto)';
+    case 'estimated':
+      return 'Estimativa editável — altere se tiver a odd real da casa';
+    case 'manual':
+      return 'Manual (odd real informada por você)';
+    case 'unavailable':
+      return 'Sem odd — potencial não calculado';
+    default:
+      return null;
+  }
+});
+
+const selectedQuickEntries = computed(() => selectedRace.value?.quick_entries ?? []);
+
+const primaryQuickEntries = computed(() =>
+  selectedQuickEntries.value.filter((entry) => entry.tier === 'primary'),
+);
+
+const alternateQuickEntries = computed(() =>
+  selectedQuickEntries.value.filter((entry) => entry.tier === 'alternate'),
+);
+
 function parseTags(raw: string): string[] {
   return raw
     .split(',')
@@ -91,18 +140,188 @@ function parseTags(raw: string): string[] {
     .filter(Boolean);
 }
 
-function buildEntryPayload(): Record<string, unknown> {
-  const odd = operationForm.entry_odd ? Number.parseFloat(operationForm.entry_odd) : undefined;
+function resetPricingMeta() {
+  pricingMeta.pricing_status = null;
+  pricingMeta.estimated_entry_odd = null;
+  pricingMeta.selected_quick_entry_label = null;
+}
+
+function selectRace(race: PendingDemoRace) {
+  selectedRace.value = race;
+  operationForm.speedway_race_id = String(race.id);
+  contextSnapshot.value = {
+    ...race,
+    source: 'demo_manual_pending_picker',
+    captured_at: new Date().toISOString(),
+  };
+  resetPricingMeta();
+}
+
+function applyQuickEntry(entry: QuickEntry) {
+  operationForm.market_type = entry.market_type;
+  operationForm.bet_type = 'single';
+  pricingMeta.pricing_status = entry.pricing_status;
+  pricingMeta.estimated_entry_odd = entry.pricing_status === 'estimated' ? entry.entry_odd : null;
+  pricingMeta.selected_quick_entry_label = entry.label;
+
+  if (entry.market_type === 'winner') {
+    operationForm.entry_position = entry.entry_position ? String(entry.entry_position) : '';
+    operationForm.entry_color = entry.entry_position
+      ? PILOT_POSITION_COLORS[entry.entry_position] ?? ''
+      : '';
+    operationForm.order = entry.order;
+    operationForm.entry_odd = entry.entry_odd !== null ? String(entry.entry_odd) : '';
+  } else {
+    clearWinnerFields();
+    operationForm.order = entry.order;
+    operationForm.entry_odd = entry.entry_odd !== null ? String(entry.entry_odd) : '';
+  }
+}
+
+function clearSelectedRace() {
+  selectedRace.value = null;
+  operationForm.speedway_race_id = '';
+  contextSnapshot.value = null;
+  resetPricingMeta();
+}
+
+function clearWinnerFields() {
+  operationForm.entry_position = '';
+  operationForm.entry_color = '';
+}
+
+function onEntryOddInput() {
+  const parsed = operationForm.entry_odd ? Number.parseFloat(operationForm.entry_odd) : null;
+
+  if (parsed === null || Number.isNaN(parsed)) {
+    if (operationForm.market_type === 'winner') {
+      pricingMeta.pricing_status = 'unavailable';
+    } else if (pricingMeta.estimated_entry_odd !== null) {
+      pricingMeta.pricing_status = 'unavailable';
+    }
+    return;
+  }
+
+  if (pricingMeta.pricing_status === 'estimated' && pricingMeta.estimated_entry_odd !== null) {
+    pricingMeta.pricing_status = parsed === pricingMeta.estimated_entry_odd ? 'estimated' : 'manual';
+    return;
+  }
 
   if (operationForm.market_type === 'winner') {
+    pricingMeta.pricing_status = 'observed';
+  } else if (pricingMeta.pricing_status !== 'observed') {
+    pricingMeta.pricing_status = 'manual';
+  }
+}
+
+function applyQuickPreset(preset: QuickPresetId) {
+  const entry = selectedRace.value?.quick_entries?.find((item) => item.id === preset);
+  if (entry) {
+    applyQuickEntry(entry);
+    return;
+  }
+
+  const race = selectedRace.value;
+  if (!race) return;
+
+  switch (preset) {
+    case 'winner_favorite':
+      applyQuickEntry({
+        id: preset,
+        label: 'Winner favorito',
+        tier: 'primary',
+        market_type: 'winner',
+        bet_type: 'single',
+        order: String(race.rank_1_position ?? ''),
+        entry_position: race.rank_1_position ?? undefined,
+        entry_odd: race.rank_1_odd ? Number.parseFloat(race.rank_1_odd) : null,
+        pricing_status: 'observed',
+      });
+      break;
+    case 'winner_underdog':
+      applyQuickEntry({
+        id: preset,
+        label: 'Winner zebra',
+        tier: 'primary',
+        market_type: 'winner',
+        bet_type: 'single',
+        order: String(race.rank_4_position ?? ''),
+        entry_position: race.rank_4_position ?? undefined,
+        entry_odd: race.rank_4_odd ? Number.parseFloat(race.rank_4_odd) : null,
+        pricing_status: 'observed',
+      });
+      break;
+    case 'forecast_suggested':
+      if (race.market_rank_forecast_order) {
+        applyQuickEntry({
+          id: preset,
+          label: `Forecast ${race.market_rank_forecast_order}`,
+          tier: 'primary',
+          market_type: 'forecast',
+          bet_type: 'single',
+          order: race.market_rank_forecast_order,
+          entry_odd: null,
+          pricing_status: 'unavailable',
+        });
+      }
+      break;
+    case 'tricast_suggested':
+      if (race.market_rank_tricast_order) {
+        applyQuickEntry({
+          id: preset,
+          label: `Tricast ${race.market_rank_tricast_order}`,
+          tier: 'primary',
+          market_type: 'tricast',
+          bet_type: 'single',
+          order: race.market_rank_tricast_order,
+          entry_odd: null,
+          pricing_status: 'unavailable',
+        });
+      }
+      break;
+  }
+}
+
+function raceScheduleLabel(race: PendingDemoRace): string {
+  return race.schedule_slot
+    ?? formatScheduleSlot(
+      race.race_hour !== null ? String(race.race_hour) : null,
+      race.race_minute !== null ? String(race.race_minute) : null,
+    );
+}
+
+function buildEntryPayload(): Record<string, unknown> {
+  const odd = operationForm.entry_odd ? Number.parseFloat(operationForm.entry_odd) : undefined;
+  const pricingStatus: PricingStatus = pricingMeta.pricing_status
+    ?? (odd !== undefined && !Number.isNaN(odd) ? 'manual' : 'unavailable');
+
+  const base: Record<string, unknown> = {
+    pricing_status: pricingStatus,
+  };
+
+  if (pricingMeta.estimated_entry_odd !== null) {
+    base.estimated_entry_odd = pricingMeta.estimated_entry_odd;
+  }
+  if (pricingMeta.selected_quick_entry_label) {
+    base.selected_quick_entry_label = pricingMeta.selected_quick_entry_label;
+  }
+
+  if (operationForm.market_type === 'winner') {
+    const position = operationForm.entry_position
+      ? Number.parseInt(operationForm.entry_position, 10)
+      : undefined;
+
     return {
-      position: operationForm.entry_position ? Number.parseInt(operationForm.entry_position, 10) : undefined,
+      ...base,
+      order: position ? String(position) : operationForm.order || undefined,
+      position,
       color: operationForm.entry_color || undefined,
       odd,
     };
   }
 
   return {
+    ...base,
     order: operationForm.order || undefined,
     odd,
   };
@@ -113,15 +332,17 @@ async function loadData() {
   error.value = null;
 
   try {
-    const [accountRes, openRes, settledRes] = await Promise.all([
+    const [accountRes, openRes, settledRes, pendingRes] = await Promise.all([
       apiGet<{ data: DemoAccount }>('/demo/account'),
       apiGet<{ data: DemoOperation[] }>('/demo/operations?status=open'),
       apiGet<{ data: DemoOperation[] }>('/demo/operations?status=settled'),
+      apiGet<{ data: PendingDemoRace[] }>('/demo/pending-races?limit=12'),
     ]);
 
     account.value = accountRes.data;
     openOperations.value = openRes.data;
     settledOperations.value = settledRes.data;
+    pendingRaces.value = pendingRes.data;
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Falha ao carregar demo.';
   } finally {
@@ -164,9 +385,13 @@ async function submitOperation() {
       throw new Error('Stake inválida.');
     }
 
+    if (operationForm.market_type === 'winner' && !operationForm.entry_odd) {
+      throw new Error('Winner exige odd de entrada.');
+    }
+
     const payload: Record<string, unknown> = {
       market_type: operationForm.market_type,
-      bet_type: operationForm.bet_type,
+      bet_type: 'single',
       stake_amount: stake,
       entry_payload_json: buildEntryPayload(),
       risk_enforced: operationForm.risk_enforced,
@@ -190,10 +415,15 @@ async function submitOperation() {
       payload.note = operationForm.note.trim();
       payload.journal_tags = parseTags(operationForm.tags);
     }
+    if (contextSnapshot.value) {
+      payload.context_snapshot_json = contextSnapshot.value;
+    }
 
     await apiPost('/demo/operations', payload);
     operationForm.note = '';
     operationForm.tags = '';
+    resetPricingMeta();
+    clearSelectedRace();
     await loadData();
     activeTab.value = 'open';
   } catch (err) {
@@ -329,11 +559,146 @@ onMounted(loadData);
 
       <Card>
         <CardHeader>
+          <CardTitle class="text-base">Próximas corridas</CardTitle>
+          <CardDescription>Corridas pending disponíveis para vincular à operação.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p v-if="pendingRaces.length === 0" class="text-sm text-muted-foreground">
+            Nenhuma corrida pending no momento.
+          </p>
+
+          <div v-else class="-mx-1 flex gap-3 overflow-x-auto pb-1">
+            <article
+              v-for="race in pendingRaces"
+              :key="race.id"
+              class="min-w-[220px] shrink-0 rounded-lg border p-3 space-y-2 transition"
+              :class="selectedRace?.id === race.id ? 'border-primary bg-primary/5' : 'border-border'"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <p class="text-sm font-medium tabular-nums">{{ raceScheduleLabel(race) }}</p>
+                  <p class="text-[11px] text-muted-foreground">#{{ race.external_id }}</p>
+                </div>
+                <Badge variant="outline" class="text-[10px]">pending</Badge>
+              </div>
+
+              <div class="grid grid-cols-4 gap-1 text-center text-[10px]">
+                <div
+                  v-for="pilot in race.pilot_odds"
+                  :key="pilot.position"
+                  class="rounded bg-muted/60 px-1 py-1"
+                >
+                  <p class="text-muted-foreground">P{{ pilot.position }}</p>
+                  <p class="font-medium tabular-nums">{{ pilot.odd }}</p>
+                </div>
+              </div>
+
+              <div class="space-y-0.5 text-[11px] text-muted-foreground">
+                <p>
+                  Rank 1:
+                  <span class="text-foreground tabular-nums">
+                    P{{ race.rank_1_position ?? '—' }} @{{ race.rank_1_odd ?? '—' }}
+                  </span>
+                </p>
+                <p>
+                  Forecast:
+                  <span class="text-foreground">{{ race.market_rank_forecast_order ?? '—' }}</span>
+                </p>
+                <p>
+                  Tricast:
+                  <span class="text-foreground">{{ race.market_rank_tricast_order ?? '—' }}</span>
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                class="w-full"
+                :variant="selectedRace?.id === race.id ? 'default' : 'outline'"
+                @click="selectRace(race)"
+              >
+                {{ selectedRace?.id === race.id ? 'Selecionada' : 'Selecionar' }}
+              </Button>
+            </article>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle class="text-base">Nova operação manual</CardTitle>
           <CardDescription>Stake debita a banca imediatamente via bankroll_transactions.</CardDescription>
         </CardHeader>
         <CardContent>
           <form class="grid gap-4" @submit.prevent="submitOperation">
+            <div
+              v-if="selectedRace"
+              class="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-3"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <p class="text-sm font-medium">Corrida selecionada</p>
+                  <p class="text-xs text-muted-foreground">
+                    {{ raceScheduleLabel(selectedRace) }} · #{{ selectedRace.external_id }} · ID {{ selectedRace.id }}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="ghost" @click="clearSelectedRace">
+                  Remover
+                </Button>
+              </div>
+
+              <div class="space-y-2">
+                <div class="flex flex-wrap gap-1.5">
+                  <template v-if="primaryQuickEntries.length">
+                    <Button
+                      v-for="entry in primaryQuickEntries"
+                      :key="entry.id"
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      class="text-xs"
+                      @click="applyQuickEntry(entry)"
+                    >
+                      {{ entry.label }}
+                    </Button>
+                  </template>
+                  <template v-else>
+                    <Button
+                      v-for="preset in QUICK_PRESETS"
+                      :key="preset.id"
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      class="text-xs"
+                      @click="applyQuickPreset(preset.id)"
+                    >
+                      {{ preset.label }}
+                    </Button>
+                  </template>
+                </div>
+                <div v-if="alternateQuickEntries.length" class="space-y-1">
+                  <p class="text-[11px] text-muted-foreground">Outras ordens</p>
+                  <div class="flex flex-wrap gap-1.5">
+                    <Button
+                      v-for="entry in alternateQuickEntries"
+                      :key="entry.id"
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      class="text-xs"
+                      @click="applyQuickEntry(entry)"
+                    >
+                      {{ entry.label }}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <p v-else class="text-xs text-muted-foreground">
+              Selecione uma corrida acima ou deixe em branco para operação sem vínculo.
+            </p>
+
             <div class="grid gap-3 sm:grid-cols-2">
               <label class="grid gap-1 text-sm">
                 <span class="text-muted-foreground">Mercado</span>
@@ -345,10 +710,12 @@ onMounted(loadData);
               </label>
               <label class="grid gap-1 text-sm">
                 <span class="text-muted-foreground">Tipo de aposta</span>
-                <select v-model="operationForm.bet_type" class="rounded-md border border-input bg-background px-3 py-2">
-                  <option value="single">Single</option>
-                  <option value="combo">Combo</option>
-                </select>
+                <input
+                  type="text"
+                  value="Single (MVP)"
+                  readonly
+                  class="rounded-md border border-input bg-muted/40 px-3 py-2 text-muted-foreground"
+                />
               </label>
             </div>
 
@@ -359,11 +726,27 @@ onMounted(loadData);
               </label>
               <label class="grid gap-1 text-sm">
                 <span class="text-muted-foreground">Odd entrada</span>
-                <input v-model="operationForm.entry_odd" type="number" step="0.01" min="0.01" class="rounded-md border border-input bg-background px-3 py-2" placeholder="Opcional" />
+                <input
+                  v-model="operationForm.entry_odd"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  class="rounded-md border border-input bg-background px-3 py-2"
+                  placeholder="Opcional p/ forecast sem odd"
+                  @input="onEntryOddInput"
+                />
+                <span v-if="oddHint" class="text-[11px] text-muted-foreground">{{ oddHint }}</span>
               </label>
               <label class="grid gap-1 text-sm">
-                <span class="text-muted-foreground">ID corrida</span>
-                <input v-model="operationForm.speedway_race_id" type="number" min="1" class="rounded-md border border-input bg-background px-3 py-2" placeholder="Opcional" />
+                <span class="text-muted-foreground">ID corrida (manual)</span>
+                <input
+                  v-model="operationForm.speedway_race_id"
+                  type="number"
+                  min="1"
+                  class="rounded-md border border-input bg-background px-3 py-2"
+                  placeholder="Opcional"
+                  @input="selectedRace = null; contextSnapshot = null; resetPricingMeta()"
+                />
               </label>
             </div>
 

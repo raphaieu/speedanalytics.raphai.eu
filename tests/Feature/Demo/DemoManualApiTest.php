@@ -3,6 +3,7 @@
 namespace Tests\Feature\Demo;
 
 use App\Models\DemoOperation;
+use App\Models\SpeedwayRace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -69,7 +70,8 @@ class DemoManualApiTest extends TestCase
             'market_type' => 'winner',
             'bet_type' => 'single',
             'stake_amount' => 1,
-            'entry_payload_json' => ['position' => 1],
+            'entry_odd' => 2.50,
+            'entry_payload_json' => ['position' => 1, 'odd' => 2.50],
             'risk_enforced' => false,
         ])->json('data.id');
 
@@ -77,7 +79,8 @@ class DemoManualApiTest extends TestCase
             'market_type' => 'winner',
             'bet_type' => 'single',
             'stake_amount' => 1,
-            'entry_payload_json' => ['position' => 1],
+            'entry_odd' => 2.50,
+            'entry_payload_json' => ['position' => 1, 'odd' => 2.50],
             'risk_enforced' => false,
         ])->json('data.id');
 
@@ -103,7 +106,8 @@ class DemoManualApiTest extends TestCase
             'market_type' => 'winner',
             'bet_type' => 'single',
             'stake_amount' => 2,
-            'entry_payload_json' => ['position' => 1],
+            'entry_odd' => 3.00,
+            'entry_payload_json' => ['position' => 1, 'odd' => 3.00],
             'risk_enforced' => false,
         ])->json('data.id');
 
@@ -121,19 +125,185 @@ class DemoManualApiTest extends TestCase
 
     public function test_rejects_settlement_without_amounts_for_win(): void
     {
-        $operation = DemoOperation::query()->first()
-            ?? $this->postJson('/api/demo/operations', [
-                'market_type' => 'winner',
-                'bet_type' => 'single',
-                'stake_amount' => 1,
-                'entry_payload_json' => ['position' => 1],
-                'risk_enforced' => false,
-            ])->json('data');
-
-        $operationId = is_array($operation) ? $operation['id'] : $operation->id;
+        $operationId = $this->postJson('/api/demo/operations', [
+            'market_type' => 'winner',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_odd' => 2.00,
+            'entry_payload_json' => ['position' => 1, 'odd' => 2.00],
+            'risk_enforced' => false,
+        ])->json('data.id');
 
         $this->postJson("/api/demo/operations/{$operationId}/settle", [
             'result' => 'win',
         ])->assertStatus(422);
+    }
+
+    public function test_lists_pending_races_for_demo_picker(): void
+    {
+        SpeedwayRace::query()->create([
+            'external_id' => 'demo-pending-1',
+            'status' => 'pending',
+            'race_hour' => 20,
+            'race_minute' => 15,
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'rank_1_position' => 3,
+            'rank_1_odd' => 2.45,
+            'rank_2_position' => 1,
+            'rank_2_odd' => 3.20,
+            'rank_3_position' => 4,
+            'rank_3_odd' => 5.00,
+            'rank_4_position' => 2,
+            'rank_4_odd' => 8.00,
+            'market_rank_forecast_order' => '3-1',
+            'market_rank_tricast_order' => '3-1-4',
+            'favorite_position' => 3,
+            'favorite_odd' => 2.45,
+            'underdog_position' => 2,
+            'underdog_odd' => 8.00,
+            'first_seen_at' => now(),
+        ]);
+
+        SpeedwayRace::query()->create([
+            'external_id' => 'demo-settled-1',
+            'status' => 'settled',
+            'pilot_odds_raw' => '2.00|3.00|4.00|5.00',
+            'winner_position' => 1,
+            'first_seen_at' => now()->subHour(),
+            'settled_at' => now(),
+        ]);
+
+        $this->getJson('/api/demo/pending-races')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.external_id', 'demo-pending-1')
+            ->assertJsonPath('data.0.market_rank_forecast_order', '3-1')
+            ->assertJsonPath('data.0.pilot_odds.0.position', 1)
+            ->assertJsonPath('data.0.quick_entries.0.id', 'winner_favorite')
+            ->assertJsonPath('data.0.quick_entries.0.pricing_status', 'observed')
+            ->assertJsonPath('data.0.quick_entries.2.id', 'forecast_suggested')
+            ->assertJsonPath('data.0.quick_entries.2.label', 'Forecast 3-1')
+            ->assertJsonPath('data.0.quick_entries.2.pricing_status', 'estimated')
+            ->assertJsonPath('data.0.quick_entries.2.entry_odd', 5.10)
+            ->assertJsonPath('data.0.quick_entries.3.id', 'tricast_suggested')
+            ->assertJsonPath('data.0.quick_entries.3.label', 'Tricast 3-1-4');
+    }
+
+    public function test_quick_entry_tricast_returns_estimated_pricing_status(): void
+    {
+        SpeedwayRace::query()->create([
+            'external_id' => 'demo-pending-tricast',
+            'status' => 'pending',
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'rank_1_position' => 3,
+            'rank_1_odd' => 2.45,
+            'rank_2_position' => 1,
+            'rank_2_odd' => 3.20,
+            'rank_3_position' => 4,
+            'rank_3_odd' => 5.00,
+            'rank_4_position' => 2,
+            'rank_4_odd' => 8.00,
+            'market_rank_forecast_order' => '3-1',
+            'market_rank_tricast_order' => '3-1-4',
+            'first_seen_at' => now(),
+        ]);
+
+        $this->getJson('/api/demo/pending-races')
+            ->assertJsonPath('data.0.quick_entries.3.id', 'tricast_suggested')
+            ->assertJsonPath('data.0.quick_entries.3.pricing_status', 'estimated')
+            ->assertJsonPath('data.0.quick_entries.3.bet_type', 'single')
+            ->assertJsonPath('data.0.quick_entries.3.entry_odd', 13.72)
+            ->assertJsonPath('data.0.quick_entries.3.label', 'Tricast 3-1-4');
+    }
+
+    public function test_creates_forecast_operation_with_estimated_pricing_status(): void
+    {
+        $response = $this->postJson('/api/demo/operations', [
+            'market_type' => 'forecast',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_odd' => 5.40,
+            'entry_payload_json' => [
+                'order' => '4-1',
+                'pricing_status' => 'estimated',
+                'estimated_entry_odd' => 5.40,
+                'selected_quick_entry_label' => 'Forecast rank 1-2',
+            ],
+            'risk_enforced' => false,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.bet_type', 'single')
+            ->assertJsonPath('data.entry_payload_json.pricing_status', 'estimated');
+
+        $this->assertEquals('5.40', $response->json('data.potential_gross_return'));
+    }
+
+    public function test_creates_forecast_operation_with_manual_pricing_status(): void
+    {
+        $response = $this->postJson('/api/demo/operations', [
+            'market_type' => 'forecast',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_odd' => 5.63,
+            'entry_payload_json' => [
+                'order' => '4-1',
+                'pricing_status' => 'manual',
+                'estimated_entry_odd' => 5.40,
+                'selected_quick_entry_label' => 'Forecast rank 1-2',
+            ],
+            'risk_enforced' => false,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.entry_payload_json.pricing_status', 'manual')
+            ->assertJsonPath('data.entry_odd', '5.63');
+    }
+
+    public function test_rejects_winner_without_entry_odd(): void
+    {
+        $this->postJson('/api/demo/operations', [
+            'market_type' => 'winner',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_payload_json' => ['position' => 1],
+            'risk_enforced' => false,
+        ])->assertStatus(422)
+            ->assertJsonPath('message', 'Winner exige odd de entrada.');
+    }
+
+    public function test_stores_context_snapshot_with_manual_operation(): void
+    {
+        $race = SpeedwayRace::query()->create([
+            'external_id' => 'demo-pending-snapshot',
+            'status' => 'pending',
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'first_seen_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/demo/operations', [
+            'speedway_race_id' => $race->id,
+            'market_type' => 'winner',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_position' => 3,
+            'entry_odd' => 2.45,
+            'entry_payload_json' => ['position' => 3, 'odd' => 2.45],
+            'risk_enforced' => false,
+            'context_snapshot_json' => [
+                'source' => 'demo_manual_pending_picker',
+                'external_id' => 'demo-pending-snapshot',
+            ],
+        ]);
+
+        $response->assertCreated();
+
+        $this->assertDatabaseHas('demo_operations', [
+            'id' => $response->json('data.id'),
+            'speedway_race_id' => $race->id,
+        ]);
+
+        $operation = DemoOperation::query()->findOrFail($response->json('data.id'));
+        $this->assertSame('demo_manual_pending_picker', $operation->context_snapshot_json['source'] ?? null);
     }
 }

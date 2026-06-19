@@ -98,6 +98,7 @@ GET  /api/analytics/favorite-odds-bands
 GET  /api/analytics/underdog-odds-bands
 GET  /api/demo/account
 POST /api/demo/account/adjust-bankroll
+GET  /api/demo/pending-races
 GET  /api/demo/operations
 POST /api/demo/operations
 POST /api/demo/operations/{id}/settle
@@ -219,27 +220,36 @@ Runtime/deploy Node extra além do collector. Descartado.
 
 ### Demo manual (MVP 3 parcial — 2026-06-19)
 
-Primeira fatia do simulador: operações manuais, banca fictícia e diário. **Fora de escopo nesta entrega:** Strategy Engine, automação, pricing automático forecast/tricast, `RiskSession`.
+Primeira fatia do simulador: operações manuais, banca fictícia e diário.
+
+**Fora de escopo:** Strategy Engine, automação, `demo_operation_legs`, tickets compostos, captura automática de odds da casa, `RiskSession`.
 
 ```txt
 UI /demo/manual
     │
-    ▼
-DemoAccountController / DemoOperationController  (API JSON)
+    ├── GET /api/demo/pending-races  → cards + quick_entries
     │
     ▼
-DemoAccountService / DemoManualOperationService
+DemoAccountController / DemoOperationController / DemoPendingRaceController
+    │
+    ▼
+DemoAccountService / DemoManualOperationService / DemoQuickEntryBuilder
+MarketOddEstimatorService
     │
     ├── demo_accounts          (seed: manual-default, 100u)
-    ├── demo_operations        (origin=manual, open → settled)
+    ├── demo_operations        (origin=manual, bet_type=single no MVP)
     ├── bankroll_transactions  (stake, settlement, manual_adjustment)
     └── journal_entries        (nota, tags, 1:1 com operação)
 ```
 
+- **Seleção de corrida:** `GET /api/demo/pending-races` retorna odds, ranks e `quick_entries` (`tier: primary | alternate`)
+- **Atalhos principais:** Winner favorito (rank 1), Winner zebra (rank 4), Forecast/Tricast sugeridos (`market_rank_*_order`)
 - **Abertura:** stake debita `current_balance`; transação `operation_stake`
-- **Liquidação manual:** `settleOperationExplicitly` — `win` | `loss` | `void` com `actual_gross_return` ou `profit_loss`
-- **Liquidação por corrida:** `settleManualOperation` — compara entrada com `winner_position` ou `result_*_order` (uso futuro em job automático)
-- **`after_stop`:** flag persistida; preenchimento automático aguarda `RiskSession`
+- **Liquidação manual:** `settleOperationExplicitly` — `win` | `loss` | `void`
+- **Liquidação por corrida:** `settleManualOperation` (uso futuro em job automático)
+- **`pricing_status`** em `entry_payload_json`: `observed` | `estimated` | `manual` | `unavailable`
+- **Odd estimada:** `MarketOddEstimatorService` — produto das odds × multiplicador (`config/speedway.php`)
+- **`after_stop`:** flag manual até existir `RiskSession`
 
 ### Semântica de previsão
 
@@ -269,10 +279,12 @@ speedanalytics.raphai.eu/
 ├── app/
 │   ├── Http/Controllers/Api/
 │   │   ├── DemoAccountController.php
-│   │   └── DemoOperationController.php
+│   │   ├── DemoOperationController.php
+│   │   └── DemoPendingRaceController.php
 │   ├── Services/
-│   │   ├── Demo/                 # DemoAccountService, DemoManualOperationService
-│   │   └── Speedway/             # RaceMetricsService
+│   │   ├── Demo/                 # DemoAccountService, DemoManualOperationService, DemoQuickEntryBuilder
+│   │   ├── Speedway/             # RaceMetricsService
+│   │   └── MarketOddEstimatorService.php
 │   ├── Support/
 │   │   ├── DemoPresenter.php
 │   │   └── SpeedwayRacePresenter.php

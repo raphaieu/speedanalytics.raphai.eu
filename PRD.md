@@ -1401,7 +1401,7 @@ created_at
 updated_at
 ```
 
-> **Implementado (2026-06-19):** `origin=manual` via UI `/demo/manual` e API `/api/demo/*`. Strategy Engine e liquidação automática por job ainda não implementados.
+> **Implementado (2026-06-19):** `origin=manual` via UI `/demo/manual` e API `/api/demo/*`. No MVP, forecast/tricast são tratados como `bet_type=single` lógico. `entry_payload_json` inclui `order`, `pricing_status` (`observed`|`estimated`|`manual`|`unavailable`), `estimated_entry_odd` e `selected_quick_entry_label`. Strategy Engine, tickets compostos e liquidação automática por job ainda não implementados.
 
 ---
 
@@ -1605,6 +1605,8 @@ RaceMetricsService              ✓ implementado
 CollectorHealthService
 DemoAccountService              ✓ implementado
 DemoManualOperationService      ✓ implementado (manual; automação futura)
+DemoQuickEntryBuilder           ✓ implementado (atalhos por corrida pending)
+MarketOddEstimatorService       ✓ implementado (odd estimada forecast/tricast; heurística)
 StrategyEngineService           — planejado
 BacktestService                 — planejado
 RiskManagementService           — planejado
@@ -1826,9 +1828,12 @@ Permitir criação de setups simples e simulação automática.
 | Liquidação manual green/red/void | **Concluído** |
 | Diário (nota + tags) | **Concluído** |
 | UI `/demo/manual` + API `/api/demo/*` | **Concluído** |
+| Seleção de corridas pending + `quick_entries` | **Concluído** |
+| Odd estimada forecast/tricast + `pricing_status` | **Concluído** |
 | Cadastro de setup + engine de sinais | Planejado |
 | Gestão de risco + `RiskSession` | Planejado |
 | Liquidação automática por corrida `settled` | Planejado |
+| Tickets compostos / `demo_operation_legs` | Planejado |
 | Curva da banca + racional automático | Planejado |
 
 ### Escopo
@@ -2265,8 +2270,10 @@ Produto pode ser interpretado como promessa de lucro.
 * ~~Liquidar operações (manual green/red/void).~~ — concluído
 * ~~Criar banca fictícia e `bankroll_transactions`.~~ — concluído
 * ~~Diário operacional (nota + tags).~~ — concluído
-* ~~Tela `/demo/manual`.~~ — concluído
+* ~~Tela `/demo/manual` com seleção de corridas pending.~~ — concluído
+* ~~Atalhos de entrada e odd estimada (`pricing_status`).~~ — concluído
 * Liquidação automática ao `settled` (job).
+* Tickets compostos / `demo_operation_legs`.
 * Criar curva de banca.
 * Criar racional automático.
 

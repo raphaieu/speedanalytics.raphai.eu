@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CollectorIngestController;
 use App\Http\Controllers\Api\CollectorStatusController;
 use App\Http\Controllers\Api\DemoAccountController;
 use App\Http\Controllers\Api\DemoOperationController;
+use App\Http\Controllers\Api\DemoPendingRaceController;
 use App\Http\Controllers\Api\FavoriteOddsBandsController;
 use App\Http\Controllers\Api\RaceController;
 use App\Http\Controllers\Api\UnderdogOddsBandsController;
@@ -22,6 +23,7 @@ Route::get('/analytics/underdog-odds-bands', [UnderdogOddsBandsController::class
 Route::prefix('demo')->group(function (): void {
     Route::get('/account', [DemoAccountController::class, 'show']);
     Route::post('/account/adjust-bankroll', [DemoAccountController::class, 'adjustBankroll']);
+    Route::get('/pending-races', [DemoPendingRaceController::class, 'index']);
     Route::get('/operations', [DemoOperationController::class, 'index']);
     Route::post('/operations', [DemoOperationController::class, 'store']);
     Route::post('/operations/{operation}/settle', [DemoOperationController::class, 'settle']);

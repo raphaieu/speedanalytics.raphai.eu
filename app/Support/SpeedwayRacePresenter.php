@@ -7,6 +7,57 @@ use App\Models\SpeedwayRace;
 class SpeedwayRacePresenter
 {
     /**
+     * @param  array<string, mixed>  $calculated  métricas calculadas (fallback quando colunas ainda não persistidas)
+     * @return array<string, mixed>
+     */
+    public static function pendingForDemo(SpeedwayRace $race, array $calculated = []): array
+    {
+        $oddsRaw = self::pendingOddsRaw($race) ?? $race->pilot_odds_raw;
+        $pilots = self::pilots($oddsRaw, $race);
+        $pick = fn (string $key) => $race->getAttribute($key) ?? $calculated[$key] ?? null;
+
+        return [
+            'id' => $race->id,
+            'external_id' => $race->external_id,
+            'status' => $race->status,
+            'schedule_slot' => self::scheduleSlot($race),
+            'race_hour' => $race->race_hour,
+            'race_minute' => $race->race_minute,
+            'pilot_odds_raw' => $oddsRaw,
+            'pilot_odds' => array_map(
+                fn (array $pilot) => ['position' => $pilot['position'], 'odd' => $pilot['odd']],
+                $pilots,
+            ),
+            'rank_1_position' => $pick('rank_1_position'),
+            'rank_1_odd' => $pick('rank_1_odd'),
+            'rank_2_position' => $pick('rank_2_position'),
+            'rank_2_odd' => $pick('rank_2_odd'),
+            'rank_3_position' => $pick('rank_3_position'),
+            'rank_3_odd' => $pick('rank_3_odd'),
+            'rank_4_position' => $pick('rank_4_position'),
+            'rank_4_odd' => $pick('rank_4_odd'),
+            'favorite_position' => $pick('favorite_position'),
+            'favorite_odd' => $pick('favorite_odd'),
+            'underdog_position' => $pick('underdog_position'),
+            'underdog_odd' => $pick('underdog_odd'),
+            'market_rank_forecast_order' => $pick('market_rank_forecast_order'),
+            'market_rank_tricast_order' => $pick('market_rank_tricast_order'),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $calculated
+     * @return array<string, mixed>
+     */
+    public static function contextSnapshotForDemo(SpeedwayRace $race, array $calculated = []): array
+    {
+        return array_merge(self::pendingForDemo($race, $calculated), [
+            'source' => 'demo_manual_pending_picker',
+            'captured_at' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function summary(SpeedwayRace $race): array

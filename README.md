@@ -73,8 +73,10 @@ Ver [collector/README.md](collector/README.md).
 ```txt
 ├── app/
 │   ├── Http/Controllers/Api/   # API REST
-│   ├── Services/Demo/          # Conta demo e operações manuais
-│   └── Services/Speedway/      # Métricas por corrida
+│   ├── Services/
+│   │   ├── Demo/               # Conta demo, operações, quick entries
+│   │   └── Speedway/           # Métricas por corrida
+│   └── Services/MarketOddEstimatorService.php
 ├── resources/js/               # Vue 3 SPA + shadcn-vue
 ├── routes/api.php              # /api/*
 ├── routes/web.php              # SPA catch-all
@@ -128,14 +130,19 @@ php artisan speedway:backfill-race-ranks   # preenche rank_* e ordens de mercado
 
 ## Demo manual (MVP 3 parcial)
 
-Simulador de entradas fictícias com banca demo e diário operacional. **Não inclui** Strategy Engine, automação nem pricing automático de forecast/tricast.
+Simulador de entradas fictícias com banca demo e diário operacional.
+
+**Inclui:** UI `/demo/manual`, API `/api/demo/*`, seleção de corridas pending, atalhos de entrada, odd estimada editável.
+
+**Não inclui:** Strategy Engine, automação, tickets compostos, captura automática de odds da casa.
 
 ### Fluxo
 
-1. Stake debita a banca na criação (`bankroll_transactions` tipo `operation_stake`)
-2. Operação fica `open` até liquidação manual (green/red/void) ou automática por corrida (serviço)
-3. Liquidação credita retorno quando aplicável (`operation_settlement`)
-4. Nota e tags podem ser registradas no diário (`journal_entries`)
+1. Selecionar corrida **pending** (opcional) ou criar operação avulsa
+2. Usar atalho (favorito, zebra, forecast/tricast sugerido) ou preencher manualmente
+3. Stake debita a banca (`operation_stake`)
+4. Operação fica `open` até liquidação manual green/red/void
+5. Nota e tags podem ir ao diário (`journal_entries`)
 
 ### Endpoints
 
@@ -143,16 +150,44 @@ Simulador de entradas fictícias com banca demo e diário operacional. **Não in
 |--------|------|-----------|
 | GET | `/api/demo/account` | Conta demo padrão e saldo |
 | POST | `/api/demo/account/adjust-bankroll` | Ajuste manual (`amount`, `description`) |
+| GET | `/api/demo/pending-races?limit=12` | Corridas pending + `quick_entries` |
 | GET | `/api/demo/operations?status=open\|settled` | Listar operações manuais |
 | POST | `/api/demo/operations` | Criar operação manual |
 | POST | `/api/demo/operations/{id}/settle` | Liquidar (`result`: `win` \| `loss` \| `void`) |
 | POST | `/api/demo/operations/{id}/journal` | Entrada de diário avulsa |
 
-### Campos principais da operação
+### Regras de entrada (MVP)
 
-- `market_type`: `winner` \| `forecast` \| `tricast`
-- `bet_type`: `single` \| `combo`
-- `speedway_race_id` (opcional), `entry_payload_json`, `stake_amount`, `entry_odd`
+| Mercado | `bet_type` | Odd | `pricing_status` |
+|---------|------------|-----|------------------|
+| Winner | `single` | Obrigatória (pré-corrida) | `observed` |
+| Forecast | `single` | Estimada ou manual | `estimated` / `manual` / `unavailable` |
+| Tricast | `single` | Estimada ou manual | `estimated` / `manual` / `unavailable` |
+
+Odd estimada (heurística provisória, `config/speedway.php`):
+
+```txt
+forecast ≈ odd₁ × odd₂ × 0.65
+tricast  ≈ odd₁ × odd₂ × odd₃ × 0.35
+```
+
+O usuário pode sobrescrever com a odd real observada na casa → `pricing_status: manual`.
+
+### `entry_payload_json` (exemplo forecast manual)
+
+```json
+{
+  "order": "4-1",
+  "pricing_status": "manual",
+  "estimated_entry_odd": 5.40,
+  "selected_quick_entry_label": "Forecast 4-1"
+}
+```
+
+### Campos da operação
+
+- `market_type`: `winner` | `forecast` | `tricast`
+- `speedway_race_id` (opcional), `context_snapshot_json`, `stake_amount`, `entry_odd`
 - `risk_enforced`, `after_stop`, `tags`, `note` (diário)
 
 Conta seed: slug `manual-default`, saldo inicial **100u**.
@@ -224,6 +259,7 @@ Auth **Sanctum** fica para fase futura (quando houver login de usuários).
 - Strategy Engine e setups
 - Liquidação automática de operações demo ao `settled`
 - Gestão de risco (`RiskSession`, stops, `after_stop` automático)
+- Tickets compostos e calibração de odds estimadas com dados reais
 - Backtests, IA explicativa, relatório diário
 
 Ver [PRD.md](PRD.md) e [CHANGELOG.md](CHANGELOG.md).
