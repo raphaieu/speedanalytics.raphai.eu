@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\AnalyticsDistributionController;
 use App\Http\Controllers\Api\AnalyticsSummaryController;
 use App\Http\Controllers\Api\CollectorIngestController;
 use App\Http\Controllers\Api\CollectorStatusController;
+use App\Http\Controllers\Api\DemoAccountController;
+use App\Http\Controllers\Api\DemoOperationController;
 use App\Http\Controllers\Api\FavoriteOddsBandsController;
 use App\Http\Controllers\Api\RaceController;
 use App\Http\Controllers\Api\UnderdogOddsBandsController;
@@ -16,5 +18,14 @@ Route::get('/analytics/summary', [AnalyticsSummaryController::class, 'show']);
 Route::get('/analytics/distributions', [AnalyticsDistributionController::class, 'show']);
 Route::get('/analytics/favorite-odds-bands', [FavoriteOddsBandsController::class, 'index']);
 Route::get('/analytics/underdog-odds-bands', [UnderdogOddsBandsController::class, 'index']);
+
+Route::prefix('demo')->group(function (): void {
+    Route::get('/account', [DemoAccountController::class, 'show']);
+    Route::post('/account/adjust-bankroll', [DemoAccountController::class, 'adjustBankroll']);
+    Route::get('/operations', [DemoOperationController::class, 'index']);
+    Route::post('/operations', [DemoOperationController::class, 'store']);
+    Route::post('/operations/{operation}/settle', [DemoOperationController::class, 'settle']);
+    Route::post('/operations/{operation}/journal', [DemoOperationController::class, 'storeJournal']);
+});
 
 Route::post('/collector/speedway', [CollectorIngestController::class, 'store']);

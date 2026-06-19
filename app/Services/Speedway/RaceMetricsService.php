@@ -8,35 +8,44 @@ class RaceMetricsService
 {
     /**
      * @param  SpeedwayRace|array<string, mixed>  $race
-     * @return array<string, int|float|bool|null>
+     * @return array<string, int|float|bool|string|null>
      */
     public function calculate(SpeedwayRace|array $race): array
     {
         $winnerPosition = $this->extractWinnerPosition($race);
         $odds = $this->extractPreRaceOdds($race);
         $metrics = $this->calculateFromOdds($odds);
+        $rankColumns = $this->calculateOddsRankColumns($odds);
         $rankByPosition = $this->rankByPosition($odds);
-        $forecastPredictionPositions = $this->forecastPositions($odds);
-        $actualForecastPositions = $this->extractActualForecastPositions($race);
-        $tricastPredictionPositions = $this->tricastPositions($odds);
-        $actualTricastPositions = $this->extractActualTricastPositions($race);
+        $marketForecastPositions = $this->marketRankForecastPositions($odds);
+        $marketTricastPositions = $this->marketRankTricastPositions($odds);
+        $resultForecastOrder = $this->extractResultForecastOrder($race);
+        $resultForecastOdd = $this->extractResultForecastOdd($race);
+        $resultTricastOrder = $this->extractResultTricastOrder($race);
+        $resultForecastPositions = $this->parseOrderPositions($resultForecastOrder);
+        $resultTricastPositions = $this->parseOrderPositions($resultTricastOrder);
 
         $forecastHit = null;
-        if (count($forecastPredictionPositions) >= 2 && count($actualForecastPositions) >= 2) {
-            $forecastHit = array_slice($forecastPredictionPositions, 0, 2) === array_slice($actualForecastPositions, 0, 2);
+        if (count($marketForecastPositions) >= 2 && count($resultForecastPositions) >= 2) {
+            $forecastHit = array_slice($marketForecastPositions, 0, 2) === array_slice($resultForecastPositions, 0, 2);
         }
 
         $tricastWinnerHit = null;
         $tricastExactHit = null;
-        if ($winnerPosition !== null && count($tricastPredictionPositions) >= 1) {
-            $tricastWinnerHit = $tricastPredictionPositions[0] === $winnerPosition;
+        if ($winnerPosition !== null && count($marketTricastPositions) >= 1) {
+            $tricastWinnerHit = $marketTricastPositions[0] === $winnerPosition;
         }
 
-        if (count($actualTricastPositions) >= 3 && count($tricastPredictionPositions) >= 3) {
-            $tricastExactHit = array_slice($tricastPredictionPositions, 0, 3) === array_slice($actualTricastPositions, 0, 3);
+        if (count($resultTricastPositions) >= 3 && count($marketTricastPositions) >= 3) {
+            $tricastExactHit = array_slice($marketTricastPositions, 0, 3) === array_slice($resultTricastPositions, 0, 3);
         }
 
-        return array_merge($metrics, [
+        return array_merge($metrics, $rankColumns, [
+            'market_rank_forecast_order' => $this->formatOrder($marketForecastPositions, 2),
+            'market_rank_tricast_order' => $this->formatOrder($marketTricastPositions, 3),
+            'result_forecast_order' => $resultForecastOrder,
+            'result_forecast_odd' => $resultForecastOdd,
+            'result_tricast_order' => $resultTricastOrder,
             'winner_was_favorite' => $winnerPosition !== null && $metrics['favorite_position'] !== null
                 ? $winnerPosition === $metrics['favorite_position']
                 : null,
@@ -99,6 +108,29 @@ class RaceMetricsService
             'odds_spread' => $minOdd !== null && $maxOdd !== null ? ($maxOdd - $minOdd) : null,
             'house_margin' => $inverseSum > 0 ? ($inverseSum - 1) : null,
         ];
+    }
+
+    /**
+     * @param  list<array{position: int, odd: float}>  $odds
+     * @return array<string, int|float|null>
+     */
+    private function calculateOddsRankColumns(array $odds): array
+    {
+        $sorted = $odds;
+
+        usort($sorted, function (array $a, array $b): int {
+            return $a['odd'] <=> $b['odd'] ?: $a['position'] <=> $b['position'];
+        });
+
+        $columns = [];
+
+        for ($rank = 1; $rank <= 4; $rank++) {
+            $entry = $sorted[$rank - 1] ?? null;
+            $columns["rank_{$rank}_position"] = $entry['position'] ?? null;
+            $columns["rank_{$rank}_odd"] = $entry['odd'] ?? null;
+        }
+
+        return $columns;
     }
 
     /**
@@ -179,7 +211,7 @@ class RaceMetricsService
     /**
      * @return list<int>
      */
-    private function parsePredictionPositions(mixed $value): array
+    private function parseOrderPositions(mixed $value): array
     {
         if (! is_string($value) || trim($value) === '') {
             return [];
@@ -194,10 +226,22 @@ class RaceMetricsService
     }
 
     /**
+     * @param  list<int>  $positions
+     */
+    private function formatOrder(array $positions, int $minimumCount): ?string
+    {
+        if (count($positions) < $minimumCount) {
+            return null;
+        }
+
+        return implode('-', array_slice($positions, 0, $minimumCount));
+    }
+
+    /**
      * @param  list<array{position: int, odd: float}>  $odds
      * @return list<int>
      */
-    private function forecastPositions(array $odds): array
+    private function marketRankForecastPositions(array $odds): array
     {
         $rankedByOdds = $this->rankPositionsByOdds($odds);
 
@@ -212,7 +256,7 @@ class RaceMetricsService
      * @param  list<array{position: int, odd: float}>  $odds
      * @return list<int>
      */
-    private function tricastPositions(array $odds): array
+    private function marketRankTricastPositions(array $odds): array
     {
         $rankedByOdds = $this->rankPositionsByOdds($odds);
 
@@ -223,27 +267,43 @@ class RaceMetricsService
         return [];
     }
 
-    /**
-     * @return list<int>
-     */
-    private function extractActualForecastPositions(SpeedwayRace|array $race): array
+    private function extractResultForecastOrder(SpeedwayRace|array $race): ?string
     {
-        $prediction = $this->parsePredictionPositions($this->extractValue($race, 'prediction'));
-        if (count($prediction) >= 2) {
-            return array_slice($prediction, 0, 2);
-        }
-
         $rawResult = $this->extractValue($race, 'raw_result_payload');
-        if (is_array($rawResult)) {
-            foreach (['Previsao', 'Forecast_Result', 'Resultado_Forecast'] as $rawKey) {
-                $positions = $this->parsePredictionPositions($rawResult[$rawKey] ?? null);
-                if (count($positions) >= 2) {
-                    return array_slice($positions, 0, 2);
-                }
-            }
+        if (! is_array($rawResult)) {
+            return null;
         }
 
-        return [];
+        $value = $rawResult['Previsao'] ?? null;
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private function extractResultForecastOdd(SpeedwayRace|array $race): ?float
+    {
+        $rawResult = $this->extractValue($race, 'raw_result_payload');
+        if (! is_array($rawResult)) {
+            return null;
+        }
+
+        $value = $rawResult['Odd_Previsao'] ?? null;
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (float) $value;
+    }
+
+    private function extractResultTricastOrder(SpeedwayRace|array $race): ?string
+    {
+        $rawResult = $this->extractValue($race, 'raw_result_payload');
+        if (! is_array($rawResult)) {
+            return null;
+        }
+
+        $value = $rawResult['Previsao_Tricast'] ?? null;
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 
     /**
@@ -278,47 +338,6 @@ class RaceMetricsService
         }
 
         return $ranks;
-    }
-
-    /**
-     * @return list<int>
-     */
-    private function extractActualTricastPositions(SpeedwayRace|array $race): array
-    {
-        $prediction = $this->parsePredictionPositions($this->extractValue($race, 'tricast_prediction'));
-        if (count($prediction) >= 3) {
-            return array_slice($prediction, 0, 3);
-        }
-
-        $possibleKeys = [
-            'resultado_tricast',
-            'tricast_result',
-            'tricast_result_raw',
-        ];
-
-        foreach ($possibleKeys as $key) {
-            $positions = $this->parsePredictionPositions($this->extractValue($race, $key));
-            if (count($positions) >= 3) {
-                return $positions;
-            }
-        }
-
-        $rawResult = $this->extractValue($race, 'raw_result_payload');
-        if (is_array($rawResult)) {
-            foreach ([
-                'Previsao_Tricast',
-                'Resultado_Tricast',
-                'Tricast_Resultado',
-                'Tricast_Result',
-            ] as $rawKey) {
-                $positions = $this->parsePredictionPositions($rawResult[$rawKey] ?? null);
-                if (count($positions) >= 3) {
-                    return $positions;
-                }
-            }
-        }
-
-        return [];
     }
 
     private function extractValue(SpeedwayRace|array $race, string $key): mixed

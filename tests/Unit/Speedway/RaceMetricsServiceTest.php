@@ -59,6 +59,54 @@ class RaceMetricsServiceTest extends TestCase
         $this->assertFalse($metrics['tricast_hit']);
     }
 
+    public function test_tied_odds_ranking_is_deterministic_by_odd_asc_then_position_asc(): void
+    {
+        $service = new RaceMetricsService;
+
+        $metrics = $service->calculate([
+            'pilot_odds_raw' => '2.00|2.00|8.00|8.00',
+            'winner_position' => 1,
+            'raw_result_payload' => [
+                'Previsao' => '1-2',
+                'Previsao_Tricast' => '1-2-3',
+            ],
+        ]);
+
+        $this->assertSame(1, $metrics['rank_1_position']);
+        $this->assertSame(2.0, $metrics['rank_1_odd']);
+        $this->assertSame(2, $metrics['rank_2_position']);
+        $this->assertSame(2.0, $metrics['rank_2_odd']);
+        $this->assertSame(3, $metrics['rank_3_position']);
+        $this->assertSame(8.0, $metrics['rank_3_odd']);
+        $this->assertSame(4, $metrics['rank_4_position']);
+        $this->assertSame(8.0, $metrics['rank_4_odd']);
+
+        $this->assertSame(1, $metrics['favorite_position']);
+        $this->assertSame(2, $metrics['second_favorite_position']);
+        $this->assertSame(3, $metrics['underdog_position']);
+        $this->assertSame(1, $metrics['winner_odd_rank']);
+
+        $this->assertSame('1-2', $metrics['market_rank_forecast_order']);
+        $this->assertSame('1-2-3', $metrics['market_rank_tricast_order']);
+        $this->assertSame('1-2', $metrics['result_forecast_order']);
+        $this->assertSame('1-2-3', $metrics['result_tricast_order']);
+        $this->assertTrue($metrics['forecast_hit']);
+        $this->assertTrue($metrics['tricast_exact_hit']);
+    }
+
+    public function test_tied_odds_breaks_underdog_tie_by_lowest_position(): void
+    {
+        $service = new RaceMetricsService;
+
+        $metrics = $service->calculate([
+            'pilot_odds_raw' => '2.00|2.00|8.00|8.00',
+            'winner_position' => 4,
+        ]);
+
+        $this->assertSame(3, $metrics['underdog_position']);
+        $this->assertSame(4, $metrics['winner_odd_rank']);
+    }
+
     public function test_breaks_tied_odds_by_lowest_position(): void
     {
         $service = new RaceMetricsService;
@@ -66,8 +114,6 @@ class RaceMetricsServiceTest extends TestCase
         $metrics = $service->calculate([
             'pilot_odds_raw' => '2.00|2.00|8.00|8.00',
             'winner_position' => 1,
-            'prediction' => '1-2',
-            'tricast_prediction' => '1-2-3',
         ]);
 
         $this->assertSame(1, $metrics['favorite_position']);
@@ -92,7 +138,7 @@ class RaceMetricsServiceTest extends TestCase
         $this->assertSame(2, $metrics['winner_odd_rank']);
     }
 
-    public function test_forecast_hit_true_when_first_and_second_favorites_match_real_order(): void
+    public function test_forecast_hit_true_when_market_rank_matches_result_forecast_order(): void
     {
         $service = new RaceMetricsService;
 
@@ -104,10 +150,12 @@ class RaceMetricsServiceTest extends TestCase
             ],
         ]);
 
+        $this->assertSame('3-1', $metrics['market_rank_forecast_order']);
+        $this->assertSame('3-1', $metrics['result_forecast_order']);
         $this->assertTrue($metrics['forecast_hit']);
     }
 
-    public function test_forecast_hit_false_when_first_and_second_favorites_do_not_match_real_order(): void
+    public function test_forecast_hit_false_when_market_rank_does_not_match_result_forecast_order(): void
     {
         $service = new RaceMetricsService;
 
@@ -119,6 +167,8 @@ class RaceMetricsServiceTest extends TestCase
             ],
         ]);
 
+        $this->assertSame('3-1', $metrics['market_rank_forecast_order']);
+        $this->assertSame('3-2', $metrics['result_forecast_order']);
         $this->assertFalse($metrics['forecast_hit']);
     }
 
@@ -134,6 +184,8 @@ class RaceMetricsServiceTest extends TestCase
             ],
         ]);
 
+        $this->assertNull($metrics['market_rank_forecast_order']);
+        $this->assertNull($metrics['result_forecast_order']);
         $this->assertNull($metrics['forecast_hit']);
     }
 
@@ -149,7 +201,101 @@ class RaceMetricsServiceTest extends TestCase
             ],
         ]);
 
+        $this->assertSame('1-2-3', $metrics['market_rank_tricast_order']);
+        $this->assertNull($metrics['result_tricast_order']);
         $this->assertTrue($metrics['tricast_winner_hit']);
+        $this->assertNull($metrics['tricast_exact_hit']);
+    }
+
+    public function test_calculates_odds_rank_columns_in_ascending_odd_order(): void
+    {
+        $service = new RaceMetricsService;
+
+        $metrics = $service->calculate([
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 3,
+        ]);
+
+        $this->assertSame(3, $metrics['rank_1_position']);
+        $this->assertEquals(2.45, $metrics['rank_1_odd']);
+        $this->assertSame(1, $metrics['rank_2_position']);
+        $this->assertEquals(3.20, $metrics['rank_2_odd']);
+        $this->assertSame(4, $metrics['rank_3_position']);
+        $this->assertEquals(5.00, $metrics['rank_3_odd']);
+        $this->assertSame(2, $metrics['rank_4_position']);
+        $this->assertEquals(8.00, $metrics['rank_4_odd']);
+    }
+
+    public function test_calculates_theoretical_market_rank_forecast_order_from_odds(): void
+    {
+        $service = new RaceMetricsService;
+
+        $metrics = $service->calculate([
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 3,
+        ]);
+
+        $this->assertSame('3-1', $metrics['market_rank_forecast_order']);
+    }
+
+    public function test_calculates_theoretical_market_rank_tricast_order_from_odds(): void
+    {
+        $service = new RaceMetricsService;
+
+        $metrics = $service->calculate([
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 3,
+        ]);
+
+        $this->assertSame('3-1-4', $metrics['market_rank_tricast_order']);
+    }
+
+    public function test_extracts_result_forecast_order_and_odd_from_settled_payload(): void
+    {
+        $service = new RaceMetricsService;
+
+        $metrics = $service->calculate([
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 3,
+            'raw_result_payload' => [
+                'Previsao' => '2-1',
+                'Odd_Previsao' => 7.50,
+            ],
+        ]);
+
+        $this->assertSame('2-1', $metrics['result_forecast_order']);
+        $this->assertEquals(7.50, $metrics['result_forecast_odd']);
+    }
+
+    public function test_extracts_result_tricast_order_from_settled_payload(): void
+    {
+        $service = new RaceMetricsService;
+
+        $metrics = $service->calculate([
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 3,
+            'raw_result_payload' => [
+                'Previsao_Tricast' => '2-1-4',
+            ],
+        ]);
+
+        $this->assertSame('2-1-4', $metrics['result_tricast_order']);
+    }
+
+    public function test_ignores_legacy_prediction_fields_for_hit_calculation(): void
+    {
+        $service = new RaceMetricsService;
+
+        $metrics = $service->calculate([
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 3,
+            'prediction' => '3-1',
+            'tricast_prediction' => '3-1-4',
+        ]);
+
+        $this->assertNull($metrics['result_forecast_order']);
+        $this->assertNull($metrics['result_tricast_order']);
+        $this->assertNull($metrics['forecast_hit']);
         $this->assertNull($metrics['tricast_exact_hit']);
     }
 }

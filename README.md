@@ -10,7 +10,9 @@ Documento de produto: [PRD.md](PRD.md) · Arquitetura: [docs/ARCHITECTURE.md](do
 |------|--------|--------|
 | **0** | Playwright Collector | Concluída |
 | **1** | Laravel 13 + Vue SPA + API + deploy Coolify + PWA | **Concluída** |
-| **2+** | Métricas, setups, demo, IA, auth Sanctum | Futuro |
+| **2** | Métricas, analytics, semântica de corrida | **Em andamento** |
+| **3** | Demo manual, setups, risco, backtests, IA | **Parcial** — demo manual ✓ |
+| — | Auth Sanctum | Futuro |
 
 ## Stack
 
@@ -45,10 +47,15 @@ php artisan serve --port=9001   # terminal 2 — http://speedanalytics.test
 php artisan queue:work redis    # terminal 3 — processa payloads
 ```
 
-- Dashboard: `/` — lê status do collector via `GET /api/collector/status`
-- Corridas: `/races` — histórico via `GET /api/races`
-- Análises: `/analytics` — resumo e bandas de favorito/zebra
-- Glossário: `/glossario` — conceitos e fórmulas das métricas
+### Páginas da SPA
+
+| Rota | Descrição |
+|------|-----------|
+| `/` | Dashboard — status do collector |
+| `/races` | Histórico de corridas |
+| `/analytics` | Resumo estatístico e bandas de odd |
+| `/glossario` | Conceitos e fórmulas das métricas |
+| `/demo/manual` | Demo manual — entradas fictícias, banca e diário |
 
 ### Collector
 
@@ -64,7 +71,10 @@ Ver [collector/README.md](collector/README.md).
 ## Estrutura
 
 ```txt
-├── app/Http/Controllers/Api/   # API REST
+├── app/
+│   ├── Http/Controllers/Api/   # API REST
+│   ├── Services/Demo/          # Conta demo e operações manuais
+│   └── Services/Speedway/      # Métricas por corrida
 ├── resources/js/               # Vue 3 SPA + shadcn-vue
 ├── routes/api.php              # /api/*
 ├── routes/web.php              # SPA catch-all
@@ -72,14 +82,7 @@ Ver [collector/README.md](collector/README.md).
 └── components.json             # shadcn-vue
 ```
 
-## Analytics (Fase 2 em andamento)
-
-### Páginas
-
-- `/analytics` — cards de resumo + tabelas por faixa de odd
-  - Favorito por faixa de odd
-  - Zebra por faixa de odd
-- `/glossario` — documentação funcional dos termos e fórmulas
+## Analytics (Fase 2)
 
 ### Endpoints
 
@@ -101,16 +104,58 @@ Ver [collector/README.md](collector/README.md).
 
 ### Forecast e Tricast do sistema
 
-- Forecast previsto: 1º e 2º menores odds
-- Tricast previsto: 1º, 2º e 3º menores odds
-- `forecast_hit`: acerto exato de 1º+2º
-- `tricast_exact_hit`: acerto exato de 1º+2º+3º quando houver ordem real completa
-- `tricast_winner_hit`: apenas o 1º do tricast bate com o vencedor
+- **Ordem teórica de mercado** (por odds pré-corrida):
+  - `market_rank_forecast_order` — 1º e 2º menores odds
+  - `market_rank_tricast_order` — 1º, 2º e 3º menores odds
+- **Resultado real** (após `settled`, do `raw_result_payload`):
+  - `result_forecast_order`, `result_forecast_odd`, `result_tricast_order`
+- `forecast_hit`: `market_rank_forecast_order` === `result_forecast_order`
+- `tricast_exact_hit`: `market_rank_tricast_order` === `result_tricast_order`
+- `tricast_winner_hit`: 1º do tricast teórico bate com o vencedor
+- Campos legados `prediction` / `tricast_prediction` **não** entram no cálculo de hit
+
+### Comandos artisan
+
+```bash
+php artisan speedway:recalculate-metrics   # recalcula métricas base
+php artisan speedway:backfill-race-ranks   # preenche rank_* e ordens de mercado/resultado
+```
 
 ### Percentuais na API
 
 - Os endpoints de analytics retornam percentuais em **percentage points** (ex.: `39.11` = `39,11%`)
 - `house_margin` é salvo em decimal no banco (`0.05`) e exposto em percentual na API (`5.00`)
+
+## Demo manual (MVP 3 parcial)
+
+Simulador de entradas fictícias com banca demo e diário operacional. **Não inclui** Strategy Engine, automação nem pricing automático de forecast/tricast.
+
+### Fluxo
+
+1. Stake debita a banca na criação (`bankroll_transactions` tipo `operation_stake`)
+2. Operação fica `open` até liquidação manual (green/red/void) ou automática por corrida (serviço)
+3. Liquidação credita retorno quando aplicável (`operation_settlement`)
+4. Nota e tags podem ser registradas no diário (`journal_entries`)
+
+### Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/api/demo/account` | Conta demo padrão e saldo |
+| POST | `/api/demo/account/adjust-bankroll` | Ajuste manual (`amount`, `description`) |
+| GET | `/api/demo/operations?status=open\|settled` | Listar operações manuais |
+| POST | `/api/demo/operations` | Criar operação manual |
+| POST | `/api/demo/operations/{id}/settle` | Liquidar (`result`: `win` \| `loss` \| `void`) |
+| POST | `/api/demo/operations/{id}/journal` | Entrada de diário avulsa |
+
+### Campos principais da operação
+
+- `market_type`: `winner` \| `forecast` \| `tricast`
+- `bet_type`: `single` \| `combo`
+- `speedway_race_id` (opcional), `entry_payload_json`, `stake_amount`, `entry_odd`
+- `risk_enforced`, `after_stop`, `tags`, `note` (diário)
+
+Conta seed: slug `manual-default`, saldo inicial **100u**.
 
 ## Variáveis `.env` (app)
 
@@ -174,6 +219,11 @@ Com `infra_mysql` / `infra_redis` em `:3306` / `:6379`: não use este compose. P
 
 Auth **Sanctum** fica para fase futura (quando houver login de usuários).
 
-## Próximos passos (Fase 2)
+## Próximos passos
 
-Métricas, setups, demo, backtests e IA — ver [PRD.md](PRD.md).
+- Strategy Engine e setups
+- Liquidação automática de operações demo ao `settled`
+- Gestão de risco (`RiskSession`, stops, `after_stop` automático)
+- Backtests, IA explicativa, relatório diário
+
+Ver [PRD.md](PRD.md) e [CHANGELOG.md](CHANGELOG.md).

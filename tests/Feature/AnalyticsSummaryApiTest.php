@@ -133,6 +133,52 @@ class AnalyticsSummaryApiTest extends TestCase
             ->assertJsonPath('metadata.percentage_format', 'percentage_points_in_api');
     }
 
+    public function test_forecast_and_tricast_hit_rates_use_market_rank_vs_result_from_payload(): void
+    {
+        $baseDate = Carbon::parse('2026-06-17 15:00:00', 'UTC');
+
+        SpeedwayRace::query()->create([
+            'external_id' => 'race-analytics-forecast-hit',
+            'status' => 'settled',
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 3,
+            'first_seen_at' => $baseDate,
+            'settled_at' => $baseDate,
+            'raw_pending_payload' => ['Odds_Pilotos' => '3.20|8.00|2.45|5.00'],
+            'raw_result_payload' => [
+                'Previsao' => '3-1',
+                'Previsao_Tricast' => '3-1-4',
+            ],
+        ]);
+
+        SpeedwayRace::query()->create([
+            'external_id' => 'race-analytics-forecast-miss',
+            'status' => 'settled',
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 3,
+            'first_seen_at' => $baseDate,
+            'settled_at' => $baseDate,
+            'raw_pending_payload' => ['Odds_Pilotos' => '3.20|8.00|2.45|5.00'],
+            'raw_result_payload' => [
+                'Previsao' => '3-2',
+                'Previsao_Tricast' => '3-2-4',
+            ],
+        ]);
+
+        $this->artisan('speedway:recalculate-metrics', ['--chunk' => 10])
+            ->assertExitCode(0);
+
+        $response = $this->getJson('/api/analytics/summary?date_from=2026-06-17&date_to=2026-06-17');
+
+        $response->assertOk()
+            ->assertJsonPath('forecast.total', 2)
+            ->assertJsonPath('forecast.hits', 1)
+            ->assertJsonPath('forecast.hit_rate', 50)
+            ->assertJsonPath('tricast.total', 2)
+            ->assertJsonPath('tricast.hits', 1)
+            ->assertJsonPath('tricast.hit_rate', 50);
+    }
+
     public function test_returns_distribution_by_favorite_odd_band(): void
     {
         SpeedwayRace::query()->create([

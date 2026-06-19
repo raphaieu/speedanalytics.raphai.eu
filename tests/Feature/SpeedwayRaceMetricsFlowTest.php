@@ -61,6 +61,12 @@ class SpeedwayRaceMetricsFlowTest extends TestCase
         $this->assertTrue($race->winner_was_favorite);
         $this->assertFalse($race->winner_was_underdog);
         $this->assertSame(1, $race->winner_odd_rank);
+        $this->assertSame('3-1', $race->market_rank_forecast_order);
+        $this->assertSame('3-1-4', $race->market_rank_tricast_order);
+        $this->assertSame('3-1', $race->result_forecast_order);
+        $this->assertEquals('2.10', $race->result_forecast_odd);
+        $this->assertSame('3-1-4', $race->result_tricast_order);
+        $this->assertSame(3, $race->rank_1_position);
         $this->assertTrue($race->forecast_hit);
         $this->assertTrue($race->tricast_winner_hit);
         $this->assertTrue($race->tricast_exact_hit);
@@ -73,8 +79,10 @@ class SpeedwayRaceMetricsFlowTest extends TestCase
             'status' => 'settled',
             'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
             'winner_position' => 3,
-            'prediction' => '3-1',
-            'tricast_prediction' => '3-1-4',
+            'raw_result_payload' => [
+                'Previsao' => '3-1',
+                'Previsao_Tricast' => '3-1-4',
+            ],
             'first_seen_at' => now()->subMinutes(1),
             'settled_at' => now(),
         ]);

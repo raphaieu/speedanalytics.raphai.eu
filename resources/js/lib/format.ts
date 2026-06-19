@@ -83,3 +83,11 @@ export function formatDayLong(dateStr: string, today = todayBr()): string {
   });
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
+
+export function formatUnits(value?: string | number | null): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const num = typeof value === 'string' ? Number.parseFloat(value) : value;
+  if (Number.isNaN(num)) return '—';
+  const prefix = num > 0 ? '+' : '';
+  return `${prefix}${num.toFixed(2)}u`;
+}

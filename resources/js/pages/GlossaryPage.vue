@@ -34,28 +34,39 @@ const raceConcepts: GlossaryItem[] = [
 
 const forecastConcepts: GlossaryItem[] = [
   {
-    term: 'Forecast por odds',
-    description: 'Previsão do 1º e 2º colocados com base nos dois pilotos de menor odd pré-corrida, nessa ordem.',
-    formula: 'forecast = [1º menor odd, 2º menor odd]',
-    example: 'Odds 3.20|8.00|2.45|5.00 → forecast 3-1 (posições 3 e 1 têm as menores odds).',
+    term: 'Forecast por odds (market rank)',
+    description: 'Ordem teórica 1º+2º colocados derivada das duas menores odds pré-corrida. Persistida em `market_rank_forecast_order`.',
+    formula: 'market_rank_forecast_order = pos(1º menor odd) + "-" + pos(2º menor odd)',
+    example: 'Odds 3.20|8.00|2.45|5.00 → market_rank_forecast_order = 3-1.',
+  },
+  {
+    term: 'Resultado forecast',
+    description: 'Ordem real do forecast após a corrida virar settled, extraída do payload de resultado.',
+    formula: 'result_forecast_order (de raw_result_payload)',
+    example: 'Previsao "2-1" no payload → result_forecast_order = 2-1.',
   },
   {
     term: 'Forecast hit',
-    description: 'Acerto quando o resultado real do forecast (1º e 2º colocados) coincide com a previsão por odds, na ordem exata.',
-    formula: 'forecast_hit = (real_1º === forecast_1º) e (real_2º === forecast_2º)',
-    example: 'Previsão 3-1 e resultado 3-1 → hit. Resultado 3-2 → miss.',
+    description: 'Acerto quando a ordem teórica de mercado coincide com o resultado real do forecast, na ordem exata.',
+    formula: 'forecast_hit = market_rank_forecast_order === result_forecast_order',
+    example: 'Teórico 3-1 e resultado 3-1 → hit. Teórico 3-1 e resultado 3-2 → miss.',
   },
   {
-    term: 'Tricast por odds',
-    description: 'Previsão do 1º, 2º e 3º colocados com base nos três pilotos de menor odd pré-corrida, nessa ordem.',
-    formula: 'tricast = [1º, 2º e 3º menor odd]',
-    example: 'Odds 2.45|3.10|6.00|9.00 → tricast 1-2-3.',
+    term: 'Tricast por odds (market rank)',
+    description: 'Ordem teórica 1º+2º+3º derivada das três menores odds pré-corrida. Persistida em `market_rank_tricast_order`.',
+    formula: 'market_rank_tricast_order = pos(1º) + "-" + pos(2º) + "-" + pos(3º)',
+    example: 'Odds 2.45|3.10|6.00|9.00 → market_rank_tricast_order = 1-2-3.',
   },
   {
-    term: 'Tricast hit',
-    description: 'Acerto quando o resultado real do tricast (1º, 2º e 3º colocados) coincide com a previsão por odds, na ordem exata.',
-    formula: 'tricast_hit = (real_1º === tricast_1º) e (real_2º === tricast_2º) e (real_3º === tricast_3º)',
-    example: 'Previsão 1-2-3 e resultado 1-2-3 → hit. Resultado 1-2-4 → miss.',
+    term: 'Tricast exact hit',
+    description: 'Acerto quando a ordem teórica de mercado coincide com o resultado real do tricast, na ordem exata.',
+    formula: 'tricast_exact_hit = market_rank_tricast_order === result_tricast_order',
+    example: 'Teórico 1-2-3 e resultado 1-2-3 → hit. Resultado 1-2-4 → miss.',
+  },
+  {
+    term: 'Tricast winner hit',
+    description: 'Apenas o 1º piloto previsto pelo tricast teórico bate com o vencedor da corrida.',
+    formula: 'tricast_winner_hit = 1º(market_rank_tricast_order) === winner_position',
   },
 ];
 

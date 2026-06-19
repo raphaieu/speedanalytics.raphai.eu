@@ -35,6 +35,13 @@ import PwaInstallBanner from '@/components/PwaInstallBanner.vue';
           <RouterLink
             class="rounded-md px-2 py-1 text-muted-foreground transition hover:bg-accent hover:text-accent-foreground sm:px-3 sm:py-1.5"
             active-class="!bg-primary !text-primary-foreground"
+            to="/demo/manual"
+          >
+            Demo
+          </RouterLink>
+          <RouterLink
+            class="rounded-md px-2 py-1 text-muted-foreground transition hover:bg-accent hover:text-accent-foreground sm:px-3 sm:py-1.5"
+            active-class="!bg-primary !text-primary-foreground"
             to="/races"
           >
             Corridas

@@ -6,13 +6,52 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Adicionado — Demo manual e diário operacional (MVP 3 parcial)
+
+Primeira fatia do simulador demo: operações manuais, banca fictícia e diário — **sem** Strategy Engine, automação nem pricing automático de forecast/tricast.
+
+- **Domínio e persistência**
+  - Tabelas `demo_accounts`, `demo_operations`, `bankroll_transactions`, `journal_entries`
+  - Seed da conta padrão `manual-default` (100u iniciais)
+  - Models `DemoAccount`, `DemoOperation`, `BankrollTransaction`, `JournalEntry`
+  - Enums: `DemoMarketType`, `DemoBetType`, `DemoOperationOrigin`, `DemoOperationStatus`, `DemoOperationResult`, `BankrollTransactionType`, `RuleCompliance`
+- **Serviços**
+  - `DemoAccountService` — conta manual padrão e ajuste de banca (`manual_adjustment`)
+  - `DemoManualOperationService` — criar operação manual, listar, liquidar por corrida (`settleManualOperation`) ou liquidação explícita green/red/void (`settleOperationExplicitly`), journal vinculado
+  - Stake debita banca na abertura; liquidação credita retorno (green/void) via `bankroll_transactions`
+  - Campo `after_stop` persistido (flag manual até existir `RiskSession`)
+- **API** (`/api/demo/*`)
+  - `GET /api/demo/account` — conta demo e saldo atual
+  - `POST /api/demo/account/adjust-bankroll` — ajuste manual de banca
+  - `GET /api/demo/operations?status=open|settled` — listar operações manuais
+  - `POST /api/demo/operations` — criar operação (journal opcional via `note`)
+  - `POST /api/demo/operations/{id}/settle` — liquidar como `win` | `loss` | `void`
+  - `POST /api/demo/operations/{id}/journal` — entrada de diário avulsa
+  - `DemoPresenter` para serialização JSON
+- **UI**
+  - Página `/demo/manual` — banca, ajuste, formulário de entrada, abas abertas/resolvidas, modal de liquidação
+  - Link **Demo** no header da SPA
+  - `apiPost()` em `useApi.ts`; tipos em `resources/js/types/demo.ts`
+- **Testes**
+  - `DemoManualOperationFlowTest` — fluxo de serviço (criar, ajustar banca, liquidar automático e explícito)
+  - `DemoManualApiTest` — contratos da API demo
+
+### Adicionado — Ranking por odds e ordens de mercado em SpeedwayRace
+
+- Colunas persistidas em `speedway_races`:
+  - `rank_1_position` … `rank_4_position` e `rank_1_odd` … `rank_4_odd` (ordem crescente de odd pré-corrida)
+  - `market_rank_forecast_order`, `market_rank_tricast_order` (previsão teórica por odds)
+  - `result_forecast_order`, `result_forecast_odd`, `result_tricast_order` (extraídos de `raw_result_payload` após `settled`)
+- `php artisan speedway:backfill-race-ranks` — preenche ranking e ordens em corridas históricas
+
 ### Adicionado — Analytics e métricas por corrida
 
 - `RaceMetricsService` para cálculo centralizado de métricas base por corrida:
   - favorito, segundo favorito, zebra, spread, margem da casa
   - `winner_was_favorite`, `winner_was_underdog`, `winner_odd_rank`
-  - `forecast_hit` (acerto exato 1º+2º por odds)
-  - `tricast_winner_hit` e `tricast_exact_hit` (acerto exato 1º+2º+3º quando aplicável)
+  - ranking por odds (`rank_*`) e ordens teóricas de mercado
+  - `forecast_hit` — acerto da ordem 1º+2º (`market_rank_forecast_order` vs `result_forecast_order`)
+  - `tricast_winner_hit` e `tricast_exact_hit` (`market_rank_tricast_order` vs `result_tricast_order`)
 - `php artisan speedway:recalculate-metrics` para recálculo em chunks de corridas históricas
 - Endpoint `GET /api/analytics/summary` com filtros (`date_from/date_to`, `hour_from/hour_to`, `only_validated`) e bloco `metadata` de diagnóstico
 - Endpoint `GET /api/analytics/favorite-odds-bands` com análise por faixa de odd do favorito (ROI, edge, P/L)
@@ -26,8 +65,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Alterado — Semântica de forecast/tricast e zebra
 
-- Forecast e tricast do sistema passam a ser derivados de odds pré-corrida (menor → maior), não da leitura literal de campos de previsão do provedor
-- `forecast_hit` deixou de ser equivalente a “favorito venceu” e passou a exigir acerto da ordem 1º+2º
+- Forecast e tricast **do sistema** passam a ser derivados de odds pré-corrida (menor → maior), não da leitura literal de campos de previsão do provedor
+- `forecast_hit` compara ordem teórica de mercado com `result_forecast_order` do payload de resultado — não usa mais `prediction` legado
+- `tricast_exact_hit` compara `market_rank_tricast_order` com `result_tricast_order`
 - `tricast_hit` (compatibilidade) representa acerto exato 1º+2º+3º (`tricast_exact_hit`)
 - Nomenclatura de UI ajustada:
   - “zebra” só quando o piloto de maior odd vence
@@ -36,15 +76,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Documentação
 
-- README, ARCHITECTURE e CHANGELOG atualizados com:
-  - endpoints de analytics
-  - novas páginas `/analytics` e `/glossario`
-  - contratos de métricas/percentuais e conceito de `winner_odd_rank`
+- README, ARCHITECTURE, CHANGELOG e PRD atualizados com demo manual, API `/api/demo/*`, página `/demo/manual` e novas colunas de ranking em `speedway_races`
+- Glossário (`/glossario`) alinhado à semântica `market_rank_*` vs `result_*`
 
-### Planejado — Fase 2+
+### Planejado — Fase 2+ (restante)
 
-- Métricas, setups, demo, backtests, IA explicativa
+- Strategy Engine e setups
+- Liquidação automática por job quando corrida virar `settled`
+- Gestão de risco (`RiskSession`, stop loss/win, `after_stop` automático)
+- Backtests, IA explicativa, relatório diário
 - Auth Sanctum (quando houver login de usuários)
+- Curva da banca demo e racional automático
 
 ---
 

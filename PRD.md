@@ -1219,6 +1219,15 @@ second_favorite_odd
 underdog_position
 underdog_odd
 
+rank_1_position … rank_4_position
+rank_1_odd … rank_4_odd
+
+market_rank_forecast_order
+market_rank_tricast_order
+result_forecast_order
+result_forecast_odd
+result_tricast_order
+
 winner_was_favorite
 winner_was_underdog
 
@@ -1337,23 +1346,54 @@ updated_at
 
 ---
 
-## 18.8 DemoOperation
+## 18.8 DemoAccount
 
 ```txt
 id
 user_id
-strategy_id
-strategy_signal_id
+name
+slug
+initial_balance
+current_balance
+is_default
+created_at
+updated_at
+```
+
+> **Implementado (2026-06-19):** seed `manual-default` com 100u iniciais.
+
+---
+
+## 18.9 DemoOperation
+
+```txt
+id
+demo_account_id
+user_id
 speedway_race_id
-entry_position
-entry_color
-entry_odd
-stake
-potential_profit
-result
+origin                    # manual | strategy (futuro)
+market_type               # winner | forecast | tricast
+bet_type                  # single | combo
+status                    # open | settled
+result                    # pending | win | loss | void
+risk_enforced
+after_stop
+rule_compliance           # compliant | violated | not_applicable
+mistake_type
+tags
+entry_payload_json
+context_snapshot_json
+stake_amount
+potential_gross_return
+potential_net_profit
+actual_gross_return
+actual_net_profit
 profit_loss
 bankroll_before
 bankroll_after
+entry_position
+entry_color
+entry_odd
 reason_snapshot
 opened_at
 settled_at
@@ -1361,9 +1401,28 @@ created_at
 updated_at
 ```
 
+> **Implementado (2026-06-19):** `origin=manual` via UI `/demo/manual` e API `/api/demo/*`. Strategy Engine e liquidação automática por job ainda não implementados.
+
 ---
 
-## 18.9 BacktestRun
+## 18.10 BankrollTransaction
+
+```txt
+id
+demo_account_id
+demo_operation_id
+type                      # operation_stake | operation_settlement | manual_adjustment
+amount
+balance_before
+balance_after
+description
+metadata_json
+created_at
+```
+
+---
+
+## 18.11 BacktestRun
 
 ```txt
 id
@@ -1394,7 +1453,7 @@ updated_at
 
 ---
 
-## 18.10 BacktestOperation
+## 18.12 BacktestOperation
 
 ```txt
 id
@@ -1415,7 +1474,7 @@ updated_at
 
 ---
 
-## 18.11 JournalEntry
+## 18.13 JournalEntry
 
 ```txt
 id
@@ -1432,9 +1491,11 @@ created_at
 updated_at
 ```
 
+> **Implementado (2026-06-19):** criado junto com operação manual via API/UI; campos `confidence_level` e `discipline_score` persistidos, UI de score ainda não exposta.
+
 ---
 
-## 18.12 AiAnalysis
+## 18.14 AiAnalysis
 
 ```txt
 id
@@ -1540,14 +1601,15 @@ speedway-analytics/
 ```txt
 SpeedwayPayloadService
 SpeedwayParserService
-RaceMetricsService
+RaceMetricsService              ✓ implementado
 CollectorHealthService
-StrategyEngineService
-DemoOperationService
-BacktestService
-RiskManagementService
-AiAnalysisService
-JournalService
+DemoAccountService              ✓ implementado
+DemoManualOperationService      ✓ implementado (manual; automação futura)
+StrategyEngineService           — planejado
+BacktestService                 — planejado
+RiskManagementService           — planejado
+AiAnalysisService               — planejado
+JournalService                  — parcial (via DemoManualOperationService)
 ```
 
 ---
@@ -1754,6 +1816,20 @@ Transformar dados brutos em leitura estatística inicial.
 ### Objetivo
 
 Permitir criação de setups simples e simulação automática.
+
+### Status de implementação (2026-06-19)
+
+| Entrega | Status |
+|---------|--------|
+| Conta demo + banca fictícia | **Concluído** |
+| Operações manuais (winner/forecast/tricast) | **Concluído** |
+| Liquidação manual green/red/void | **Concluído** |
+| Diário (nota + tags) | **Concluído** |
+| UI `/demo/manual` + API `/api/demo/*` | **Concluído** |
+| Cadastro de setup + engine de sinais | Planejado |
+| Gestão de risco + `RiskSession` | Planejado |
+| Liquidação automática por corrida `settled` | Planejado |
+| Curva da banca + racional automático | Planejado |
 
 ### Escopo
 
@@ -2155,14 +2231,17 @@ Produto pode ser interpretado como promessa de lucro.
 
 ## Fase 2 — Corridas e Métricas
 
-* Salvar corridas pending.
-* Atualizar corridas settled.
-* Normalizar odds.
-* Calcular favorito.
-* Calcular zebra.
-* Calcular spread.
-* Calcular margem.
-* Criar tela de histórico.
+* ~~Salvar corridas pending.~~ — concluído
+* ~~Atualizar corridas settled.~~ — concluído
+* ~~Normalizar odds.~~ — concluído
+* ~~Calcular favorito.~~ — concluído
+* ~~Calcular zebra.~~ — concluído
+* ~~Calcular spread.~~ — concluído
+* ~~Calcular margem.~~ — concluído
+* ~~Ranking por odds (`rank_*`) e ordens teóricas de mercado.~~ — concluído
+* ~~Calcular `forecast_hit` / `tricast_*_hit` com semântica de mercado vs resultado.~~ — concluído
+* ~~Criar tela de histórico.~~ — concluído (`/races`)
+* ~~Analytics e bandas de odd.~~ — concluído (`/analytics`)
 
 ## Fase 3 — Dashboard e Gráficos
 
@@ -2182,9 +2261,12 @@ Produto pode ser interpretado como promessa de lucro.
 
 ## Fase 5 — Demo
 
-* Criar operações demo.
-* Liquidar operações.
-* Criar banca fictícia.
+* ~~Criar operações demo (manual).~~ — concluído
+* ~~Liquidar operações (manual green/red/void).~~ — concluído
+* ~~Criar banca fictícia e `bankroll_transactions`.~~ — concluído
+* ~~Diário operacional (nota + tags).~~ — concluído
+* ~~Tela `/demo/manual`.~~ — concluído
+* Liquidação automática ao `settled` (job).
 * Criar curva de banca.
 * Criar racional automático.
 
@@ -2207,9 +2289,9 @@ Produto pode ser interpretado como promessa de lucro.
 
 ## Fase 8 — Diário
 
-* Criar notas.
-* Criar tags.
-* Criar score de disciplina.
+* ~~Criar notas.~~ — concluído (vinculadas a `demo_operations`)
+* ~~Criar tags.~~ — concluído
+* Criar score de disciplina (UI).
 * Criar relatório comportamental.
 
 ---

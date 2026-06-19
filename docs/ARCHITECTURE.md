@@ -1,6 +1,6 @@
 # Arquitetura — Speedway Analytics
 
-Última atualização: 2026-06-17
+Última atualização: 2026-06-19
 
 ## Visão geral
 
@@ -76,7 +76,7 @@ resources/
     ├── App.vue
     ├── router/
     │   └── index.ts
-    ├── views/                 # Dashboard, Corridas, Collector…
+    ├── pages/                 # Dashboard, Corridas, Analytics, Demo manual…
     ├── components/
     │   └── ui/                # shadcn-vue (Button, Card, Dialog…)
     ├── composables/           # useApi, useCollectorStatus…
@@ -96,6 +96,12 @@ GET  /api/races              →  RaceController@index
 GET  /api/analytics/summary
 GET  /api/analytics/favorite-odds-bands
 GET  /api/analytics/underdog-odds-bands
+GET  /api/demo/account
+POST /api/demo/account/adjust-bankroll
+GET  /api/demo/operations
+POST /api/demo/operations
+POST /api/demo/operations/{id}/settle
+POST /api/demo/operations/{id}/journal
 …
 
 GET  /*                      →  view('app')   # Vue Router no client
@@ -184,32 +190,65 @@ Runtime/deploy Node extra além do collector. Descartado.
 
 ### Fase 2+ (próximo)
 
-| # | Entrega | Prioridade |
-|---|---------|------------|
-| 1 | Métricas, favorito, zebra, spread | Alta |
-| 2 | Setups e demo | Média |
-| 3 | Auth Sanctum | Quando necessário |
+| # | Entrega | Prioridade | Status |
+|---|---------|------------|--------|
+| 1 | Métricas, favorito, zebra, spread, ranking por odds | Alta | **Parcial** ✓ |
+| 2 | Analytics (`/analytics`, bandas de odd) | Alta | **Concluído** ✓ |
+| 3 | Demo manual + diário | Média | **Parcial** ✓ |
+| 4 | Setups + Strategy Engine + risco | Média | Planejado |
+| 5 | Backtests, IA | Média | Planejado |
+| 6 | Auth Sanctum | Quando necessário | Planejado |
 
 ### Analytics e métricas (incremental já em uso)
 
 - Backend:
   - `RaceMetricsService` centraliza cálculo de métricas por corrida
   - comando `speedway:recalculate-metrics` para recálculo histórico em chunks
+  - comando `speedway:backfill-race-ranks` para ranking por odds e ordens forecast/tricast
 - Frontend:
   - `/analytics` com cards e bandas de favorito/zebra
   - `/glossario` com conceitos e fórmulas
 - Métricas base persistidas em `speedway_races`:
   - `favorite_*`, `underdog_*`, `winner_was_favorite`, `winner_was_underdog`
   - `winner_odd_rank` (rank do vencedor por odd pré-corrida)
+  - `rank_1_position` … `rank_4_odd` (ordem completa por odd)
+  - `market_rank_forecast_order`, `market_rank_tricast_order` (teórico)
+  - `result_forecast_order`, `result_forecast_odd`, `result_tricast_order` (real)
   - `odds_spread`, `house_margin`
   - `forecast_hit`, `tricast_winner_hit`, `tricast_exact_hit`
 
+### Demo manual (MVP 3 parcial — 2026-06-19)
+
+Primeira fatia do simulador: operações manuais, banca fictícia e diário. **Fora de escopo nesta entrega:** Strategy Engine, automação, pricing automático forecast/tricast, `RiskSession`.
+
+```txt
+UI /demo/manual
+    │
+    ▼
+DemoAccountController / DemoOperationController  (API JSON)
+    │
+    ▼
+DemoAccountService / DemoManualOperationService
+    │
+    ├── demo_accounts          (seed: manual-default, 100u)
+    ├── demo_operations        (origin=manual, open → settled)
+    ├── bankroll_transactions  (stake, settlement, manual_adjustment)
+    └── journal_entries        (nota, tags, 1:1 com operação)
+```
+
+- **Abertura:** stake debita `current_balance`; transação `operation_stake`
+- **Liquidação manual:** `settleOperationExplicitly` — `win` | `loss` | `void` com `actual_gross_return` ou `profit_loss`
+- **Liquidação por corrida:** `settleManualOperation` — compara entrada com `winner_position` ou `result_*_order` (uso futuro em job automático)
+- **`after_stop`:** flag persistida; preenchimento automático aguarda `RiskSession`
+
 ### Semântica de previsão
 
-- Forecast e tricast do sistema são derivados de odds pré-corrida (ordem crescente)
-- `forecast_hit` exige acerto exato da ordem 1º+2º
-- `tricast_exact_hit` exige acerto exato da ordem 1º+2º+3º
+- Forecast e tricast **teóricos** são derivados de odds pré-corrida (`market_rank_*`)
+- Resultado real vem de `raw_result_payload` após `settled` (`result_*`)
+- `forecast_hit` exige `market_rank_forecast_order` === `result_forecast_order`
+- `tricast_exact_hit` exige `market_rank_tricast_order` === `result_tricast_order`
 - `tricast_winner_hit` acompanha apenas acerto do primeiro piloto previsto
+- Campos legados `prediction` / `tricast_prediction` não entram no cálculo de hit
 - Nomenclatura de corrida:
   - zebra só quando o piloto de maior odd vence
   - “favorito não venceu” não implica zebra automaticamente
@@ -229,6 +268,14 @@ Runtime/deploy Node extra além do collector. Descartado.
 speedanalytics.raphai.eu/
 ├── app/
 │   ├── Http/Controllers/Api/
+│   │   ├── DemoAccountController.php
+│   │   └── DemoOperationController.php
+│   ├── Services/
+│   │   ├── Demo/                 # DemoAccountService, DemoManualOperationService
+│   │   └── Speedway/             # RaceMetricsService
+│   ├── Support/
+│   │   ├── DemoPresenter.php
+│   │   └── SpeedwayRacePresenter.php
 │   └── Jobs/ProcessSpeedwayPayloadJob.php
 ├── bootstrap/
 ├── config/
