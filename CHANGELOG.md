@@ -6,6 +6,23 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Adicionado — Liquidação automática e contabilidade corrigida no demo manual
+
+- **`SettleDemoOperationsJob`** — liquida operações `open` vinculadas a corridas `settled` (winner / forecast / tricast); idempotente com `lockForUpdate`
+- Disparo automático em **`ProcessSpeedwayPayloadJob`** quando corrida transita `pending` → `settled`
+- Fallback no **scheduler** (a cada minuto) para operações pendentes em corridas já encerradas
+- **`settleOperationExplicitly`** calcula valores no backend — loss **não** debita stake novamente; win credita retorno bruto; void devolve stake
+- Modal de liquidação envia apenas `result`; preview read-only na UI
+- Campo **`settlement_mode`** (`auto` | `manual`) exposto na API via `context_snapshot_json.settlement`
+- Testes: `DemoSettlementTest` (loss sem double-debit, win, void, forecast/tricast auto, idempotência)
+
+### Adicionado — Curva da banca demo
+
+- **`GET /api/demo/account/bankroll-curve`** — série temporal a partir de `bankroll_transactions` + saldo inicial
+- Componente **`DemoBankrollCurve`** na página `/demo/manual` (SVG, delta vs saldo inicial)
+- Polling silencioso (30s) enquanto houver operações abertas; banner quando corrida já `settled` aguarda liquidação auto
+- Badges **Liquidação auto/manual** e resumo P/L acumulado nas operações resolvidas
+
 ### Adicionado — Demo manual e diário operacional (MVP 3 parcial)
 
 Primeira fatia do simulador demo: operações manuais, banca fictícia e diário — **sem** Strategy Engine, automação, tickets compostos (`demo_operation_legs`) nem captura automática de odds forecast/tricast da casa.
@@ -122,13 +139,12 @@ Decisão de produto: no MVP, Winner, Forecast e Tricast são operações **`sing
 ### Planejado — Fase 2+ (restante)
 
 - Strategy Engine e setups
-- Liquidação automática por job quando corrida virar `settled`
 - Gestão de risco (`RiskSession`, stop loss/win, `after_stop` automático)
 - Tickets compostos / `demo_operation_legs` e captura automática de odds da casa
 - Calibração empírica dos multiplicadores de odd estimada
 - Backtests, IA explicativa, relatório diário
 - Auth Sanctum (quando houver login de usuários)
-- Curva da banca demo e racional automático
+- Racional automático das operações
 
 ---
 

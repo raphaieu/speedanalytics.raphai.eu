@@ -22,6 +22,7 @@ Route::get('/analytics/underdog-odds-bands', [UnderdogOddsBandsController::class
 
 Route::prefix('demo')->group(function (): void {
     Route::get('/account', [DemoAccountController::class, 'show']);
+    Route::get('/account/bankroll-curve', [DemoAccountController::class, 'bankrollCurve']);
     Route::post('/account/adjust-bankroll', [DemoAccountController::class, 'adjustBankroll']);
     Route::get('/pending-races', [DemoPendingRaceController::class, 'index']);
     Route::get('/operations', [DemoOperationController::class, 'index']);

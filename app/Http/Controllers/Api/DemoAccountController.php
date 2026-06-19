@@ -52,4 +52,15 @@ class DemoAccountController extends Controller
             ],
         ]);
     }
+
+    public function bankrollCurve(): JsonResponse
+    {
+        $account = $this->accountService->defaultManualAccount();
+
+        return response()->json([
+            'data' => DemoPresenter::bankrollCurve(
+                $this->accountService->bankrollCurve($account),
+            ),
+        ]);
+    }
 }

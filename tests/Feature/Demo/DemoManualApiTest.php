@@ -32,6 +32,64 @@ class DemoManualApiTest extends TestCase
             ->assertJsonPath('data.transaction.amount', '10.00');
     }
 
+    public function test_returns_bankroll_curve_with_initial_and_transactions(): void
+    {
+        $operationId = $this->postJson('/api/demo/operations', [
+            'market_type' => 'winner',
+            'bet_type' => 'single',
+            'stake_amount' => 2,
+            'entry_odd' => 3.00,
+            'entry_payload_json' => ['position' => 1, 'odd' => 3.00],
+            'risk_enforced' => false,
+        ])->json('data.id');
+
+        $this->postJson("/api/demo/operations/{$operationId}/settle", [
+            'result' => 'win',
+        ])->assertOk();
+
+        $response = $this->getJson('/api/demo/account/bankroll-curve');
+
+        $response->assertOk()
+            ->assertJsonPath('data.initial_balance', '100.00')
+            ->assertJsonPath('data.current_balance', '104.00')
+            ->assertJsonPath('data.points.0.type', 'initial')
+            ->assertJsonPath('data.points.0.balance', '100.00')
+            ->assertJsonCount(3, 'data.points');
+    }
+
+    public function test_settled_operation_exposes_settlement_mode(): void
+    {
+        $race = SpeedwayRace::query()->create([
+            'external_id' => 'api-settlement-mode',
+            'status' => 'settled',
+            'pilot_odds_raw' => '3.20|2.75|5.00|8.00',
+            'winner_position' => 1,
+            'result_forecast_order' => '1-2',
+            'result_tricast_order' => '1-2-3',
+            'first_seen_at' => now()->subMinutes(5),
+            'settled_at' => now(),
+        ]);
+
+        $operationId = $this->postJson('/api/demo/operations', [
+            'speedway_race_id' => $race->id,
+            'market_type' => 'winner',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_odd' => 3.20,
+            'entry_position' => 1,
+            'entry_payload_json' => ['position' => 1, 'odd' => 3.20],
+            'risk_enforced' => false,
+        ])->json('data.id');
+
+        $this->postJson("/api/demo/operations/{$operationId}/settle", [
+            'result' => 'win',
+        ])->assertOk()
+            ->assertJsonPath('data.settlement_mode', 'manual');
+
+        $this->getJson('/api/demo/operations?status=settled')
+            ->assertJsonPath('data.0.settlement_mode', 'manual');
+    }
+
     public function test_creates_manual_operation_via_api(): void
     {
         $response = $this->postJson('/api/demo/operations', [
@@ -86,7 +144,6 @@ class DemoManualApiTest extends TestCase
 
         $this->postJson("/api/demo/operations/{$settled}/settle", [
             'result' => 'loss',
-            'profit_loss' => -1,
         ])->assertOk();
 
         $this->getJson('/api/demo/operations?status=open')
@@ -123,7 +180,7 @@ class DemoManualApiTest extends TestCase
             ->assertJsonPath('data.current_balance', '100.00');
     }
 
-    public function test_rejects_settlement_without_amounts_for_win(): void
+    public function test_settles_operation_via_api_as_win_without_manual_amounts(): void
     {
         $operationId = $this->postJson('/api/demo/operations', [
             'market_type' => 'winner',
@@ -136,6 +193,30 @@ class DemoManualApiTest extends TestCase
 
         $this->postJson("/api/demo/operations/{$operationId}/settle", [
             'result' => 'win',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.result', 'win')
+            ->assertJsonPath('data.actual_gross_return', '2.00')
+            ->assertJsonPath('data.profit_loss', '1.00');
+
+        $this->getJson('/api/demo/account')
+            ->assertJsonPath('data.current_balance', '101.00');
+    }
+
+    public function test_rejects_manual_win_settlement_without_amounts(): void
+    {
+        $operationId = $this->postJson('/api/demo/operations', [
+            'market_type' => 'winner',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_odd' => 2.00,
+            'entry_payload_json' => ['position' => 1, 'odd' => 2.00],
+            'risk_enforced' => false,
+        ])->json('data.id');
+
+        $this->postJson("/api/demo/operations/{$operationId}/settle", [
+            'result' => 'win',
+            'settlement_mode' => 'manual',
         ])->assertStatus(422);
     }
 

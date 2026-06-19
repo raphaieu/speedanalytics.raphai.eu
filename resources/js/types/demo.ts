@@ -7,6 +7,22 @@ export type DemoAccount = {
   is_default: boolean;
 };
 
+export type DemoBankrollCurvePoint = {
+  at: string;
+  balance: string;
+  type: string;
+  label: string | null;
+  operation_id: number | null;
+};
+
+export type DemoBankrollCurve = {
+  initial_balance: string;
+  current_balance: string;
+  points: DemoBankrollCurvePoint[];
+};
+
+export type DemoBankrollCurveResponse = { data: DemoBankrollCurve };
+
 export type DemoJournal = {
   id: number;
   note: string;
@@ -45,6 +61,7 @@ export type DemoOperation = {
   entry_odd: string | null;
   opened_at: string | null;
   settled_at: string | null;
+  settlement_mode: 'auto' | 'manual' | null;
   journal: DemoJournal | null;
 };
 

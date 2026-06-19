@@ -89,15 +89,17 @@ class DemoOperationController extends Controller
     {
         $validated = $request->validate([
             'result' => ['required', 'in:win,loss,void'],
+            'settlement_mode' => ['nullable', 'in:manual'],
             'actual_gross_return' => ['nullable', 'numeric', 'min:0'],
             'profit_loss' => ['nullable', 'numeric'],
         ]);
 
         if ($validated['result'] === 'win'
+            && ($validated['settlement_mode'] ?? null) === 'manual'
             && ! isset($validated['actual_gross_return'])
             && ! isset($validated['profit_loss'])) {
             return response()->json([
-                'message' => 'Informe actual_gross_return ou profit_loss para liquidação green.',
+                'message' => 'Modo manual exige actual_gross_return ou profit_loss para liquidação green.',
             ], 422);
         }
 

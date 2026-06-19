@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { apiGet, apiPost } from '@/composables/useApi';
 import { formatDateTimeBr, formatUnits } from '@/lib/format';
 import { formatScheduleSlot, PILOT_POSITION_COLORS } from '@/lib/speedway';
 import type {
   DemoAccount,
+  DemoBankrollCurve as DemoBankrollCurveData,
   DemoOperation,
   PendingDemoRace,
   PricingStatus,
   QuickEntry,
   QuickPresetId,
 } from '@/types/demo';
+import DemoBankrollCurve from '@/components/demo/DemoBankrollCurve.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +39,7 @@ const loading = ref(true);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const account = ref<DemoAccount | null>(null);
+const bankrollCurve = ref<DemoBankrollCurveData | null>(null);
 const openOperations = ref<DemoOperation[]>([]);
 const settledOperations = ref<DemoOperation[]>([]);
 const activeTab = ref<'open' | 'settled'>('open');
@@ -80,8 +83,42 @@ const operationForm = reactive({
 const settleTarget = ref<DemoOperation | null>(null);
 const settleForm = reactive({
   result: 'win' as 'win' | 'loss' | 'void',
-  actual_gross_return: '',
-  profit_loss: '',
+});
+
+const settlementPreview = computed(() => {
+  if (!settleTarget.value) {
+    return null;
+  }
+
+  const stake = Number.parseFloat(settleTarget.value.stake_amount);
+  const odd = Number.parseFloat(settleTarget.value.entry_odd ?? '0');
+
+  if (settleForm.result === 'loss') {
+    return {
+      stakeDebited: stake,
+      settlementCredit: 0,
+      finalPl: -stake,
+    };
+  }
+
+  if (settleForm.result === 'void') {
+    return {
+      stakeDebited: stake,
+      settlementCredit: stake,
+      finalPl: 0,
+    };
+  }
+
+  const grossReturn = stake * odd;
+  const netProfit = grossReturn - stake;
+
+  return {
+    stakeDebited: stake,
+    grossReturn,
+    netProfit,
+    settlementCredit: grossReturn,
+    finalPl: netProfit,
+  };
 });
 
 const marketLabels: Record<string, string> = {
@@ -107,6 +144,23 @@ const resultLabel = (result: DemoOperation['result']) => {
 const displayedOperations = computed(() =>
   activeTab.value === 'open' ? openOperations.value : settledOperations.value,
 );
+
+const hasAwaitingAutoSettlement = computed(() =>
+  openOperations.value.some((operation) => operation.race?.status === 'settled'),
+);
+
+const settledSummary = computed(() => {
+  const wins = settledOperations.value.filter((operation) => operation.result === 'win').length;
+  const losses = settledOperations.value.filter((operation) => operation.result === 'loss').length;
+  const totalPl = settledOperations.value.reduce(
+    (sum, operation) => sum + Number.parseFloat(operation.profit_loss ?? '0'),
+    0,
+  );
+
+  return { wins, losses, totalPl, count: settledOperations.value.length };
+});
+
+let operationsPollTimer: ReturnType<typeof setInterval> | null = null;
 
 const oddHint = computed(() => {
   switch (pricingMeta.pricing_status) {
@@ -327,22 +381,67 @@ function buildEntryPayload(): Record<string, unknown> {
   };
 }
 
+async function loadBankrollCurve() {
+  const curveRes = await apiGet<{ data: DemoBankrollCurveData }>('/demo/account/bankroll-curve');
+  bankrollCurve.value = curveRes.data;
+}
+
+async function refreshOperationsQuietly() {
+  try {
+    const [accountRes, openRes, settledRes, curveRes] = await Promise.all([
+      apiGet<{ data: DemoAccount }>('/demo/account'),
+      apiGet<{ data: DemoOperation[] }>('/demo/operations?status=open'),
+      apiGet<{ data: DemoOperation[] }>('/demo/operations?status=settled'),
+      apiGet<{ data: DemoBankrollCurveData }>('/demo/account/bankroll-curve'),
+    ]);
+
+    account.value = accountRes.data;
+    openOperations.value = openRes.data;
+    settledOperations.value = settledRes.data;
+    bankrollCurve.value = curveRes.data;
+  } catch {
+    // polling silencioso
+  }
+}
+
+function stopOperationsPolling() {
+  if (operationsPollTimer !== null) {
+    clearInterval(operationsPollTimer);
+    operationsPollTimer = null;
+  }
+}
+
+function syncOperationsPolling() {
+  stopOperationsPolling();
+
+  if (openOperations.value.length === 0) {
+    return;
+  }
+
+  operationsPollTimer = setInterval(() => {
+    void refreshOperationsQuietly();
+  }, 30_000);
+}
+
 async function loadData() {
   loading.value = true;
   error.value = null;
 
   try {
-    const [accountRes, openRes, settledRes, pendingRes] = await Promise.all([
+    const [accountRes, openRes, settledRes, pendingRes, curveRes] = await Promise.all([
       apiGet<{ data: DemoAccount }>('/demo/account'),
       apiGet<{ data: DemoOperation[] }>('/demo/operations?status=open'),
       apiGet<{ data: DemoOperation[] }>('/demo/operations?status=settled'),
       apiGet<{ data: PendingDemoRace[] }>('/demo/pending-races?limit=12'),
+      apiGet<{ data: DemoBankrollCurveData }>('/demo/account/bankroll-curve'),
     ]);
 
     account.value = accountRes.data;
     openOperations.value = openRes.data;
     settledOperations.value = settledRes.data;
     pendingRaces.value = pendingRes.data;
+    bankrollCurve.value = curveRes.data;
+    syncOperationsPolling();
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Falha ao carregar demo.';
   } finally {
@@ -368,6 +467,7 @@ async function submitBankrollAdjust() {
     account.value = res.data.account;
     bankrollForm.amount = '';
     bankrollForm.description = '';
+    await loadBankrollCurve();
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Falha ao ajustar banca.';
   } finally {
@@ -436,8 +536,6 @@ async function submitOperation() {
 function openSettleModal(operation: DemoOperation) {
   settleTarget.value = operation;
   settleForm.result = 'win';
-  settleForm.actual_gross_return = operation.potential_gross_return;
-  settleForm.profit_loss = operation.potential_net_profit;
 }
 
 function closeSettleModal() {
@@ -451,19 +549,9 @@ async function submitSettlement() {
   error.value = null;
 
   try {
-    const payload: Record<string, unknown> = { result: settleForm.result };
-
-    if (settleForm.result === 'win') {
-      if (settleForm.actual_gross_return) {
-        payload.actual_gross_return = Number.parseFloat(settleForm.actual_gross_return);
-      } else if (settleForm.profit_loss) {
-        payload.profit_loss = Number.parseFloat(settleForm.profit_loss);
-      }
-    } else if (settleForm.result === 'loss' && settleForm.profit_loss) {
-      payload.profit_loss = Number.parseFloat(settleForm.profit_loss);
-    }
-
-    await apiPost(`/demo/operations/${settleTarget.value.id}/settle`, payload);
+    await apiPost(`/demo/operations/${settleTarget.value.id}/settle`, {
+      result: settleForm.result,
+    });
     closeSettleModal();
     await loadData();
     activeTab.value = 'settled';
@@ -498,7 +586,22 @@ function entrySummary(operation: DemoOperation): string {
   return `${order ?? '—'}${odd ? ` @${odd}` : ''}`;
 }
 
+function settlementModeLabel(mode: DemoOperation['settlement_mode']): string | null {
+  if (mode === 'auto') return 'Liquidação auto';
+  if (mode === 'manual') return 'Liquidação manual';
+  return null;
+}
+
+function operationAwaitingAutoSettlement(operation: DemoOperation): boolean {
+  return operation.status === 'open' && operation.race?.status === 'settled';
+}
+
 onMounted(loadData);
+onUnmounted(stopOperationsPolling);
+
+watch(openOperations, () => {
+  syncOperationsPolling();
+});
 </script>
 
 <template>
@@ -527,6 +630,8 @@ onMounted(loadData);
             <span class="text-3xl font-semibold tabular-nums">{{ account?.current_balance }}u</span>
             <span class="text-xs text-muted-foreground">inicial {{ account?.initial_balance }}u</span>
           </div>
+
+          <DemoBankrollCurve :curve="bankrollCurve" />
 
           <Separator />
 
@@ -803,7 +908,13 @@ onMounted(loadData);
       <Card>
         <CardHeader class="space-y-3">
           <div class="flex items-center justify-between gap-3">
-            <CardTitle class="text-base">Operações</CardTitle>
+            <div>
+              <CardTitle class="text-base">Operações</CardTitle>
+              <CardDescription v-if="settledSummary.count > 0" class="text-xs">
+                {{ settledSummary.wins }}G · {{ settledSummary.losses }}R · P/L acumulado
+                {{ formatUnits(settledSummary.totalPl) }}
+              </CardDescription>
+            </div>
             <div class="flex gap-1 rounded-lg border border-border p-0.5 text-xs">
               <button
                 type="button"
@@ -823,6 +934,13 @@ onMounted(loadData);
               </button>
             </div>
           </div>
+
+          <p
+            v-if="hasAwaitingAutoSettlement"
+            class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
+          >
+            Corrida encerrada — liquidação automática em andamento. A página atualiza a cada 30s.
+          </p>
         </CardHeader>
         <CardContent class="space-y-3">
           <p v-if="displayedOperations.length === 0" class="text-sm text-muted-foreground">
@@ -845,6 +963,18 @@ onMounted(loadData);
                 <Badge :variant="resultVariant(operation.result)">
                   {{ resultLabel(operation.result) }}
                 </Badge>
+                <Badge
+                  v-if="settlementModeLabel(operation.settlement_mode)"
+                  variant="outline"
+                >
+                  {{ settlementModeLabel(operation.settlement_mode) }}
+                </Badge>
+                <Badge
+                  v-if="operationAwaitingAutoSettlement(operation)"
+                  variant="secondary"
+                >
+                  Aguardando auto
+                </Badge>
                 <Badge v-if="operation.after_stop" variant="outline">after stop</Badge>
                 <Badge v-if="!operation.risk_enforced" variant="secondary">sem risco</Badge>
               </div>
@@ -863,7 +993,11 @@ onMounted(loadData);
                 <span class="text-muted-foreground">P/L</span>
                 <p class="tabular-nums">{{ formatUnits(operation.profit_loss) }}</p>
               </div>
-              <div>
+              <div v-if="operation.status === 'settled' && operation.settled_at">
+                <span class="text-muted-foreground">Liquidada</span>
+                <p>{{ formatDateTimeBr(operation.settled_at) }}</p>
+              </div>
+              <div v-else>
                 <span class="text-muted-foreground">Aberta</span>
                 <p>{{ formatDateTimeBr(operation.opened_at) }}</p>
               </div>
@@ -880,14 +1014,20 @@ onMounted(loadData);
             </div>
 
             <Button
-              v-if="operation.status === 'open'"
+              v-if="operation.status === 'open' && !operationAwaitingAutoSettlement(operation)"
               size="sm"
               variant="outline"
               :disabled="saving"
               @click="openSettleModal(operation)"
             >
-              Liquidar
+              Liquidar manual
             </Button>
+            <p
+              v-else-if="operationAwaitingAutoSettlement(operation)"
+              class="text-xs text-muted-foreground"
+            >
+              Resultado da corrida disponível — aguardando job de liquidação.
+            </p>
           </article>
         </CardContent>
       </Card>
@@ -931,23 +1071,46 @@ onMounted(loadData);
             </Button>
           </div>
 
-          <div v-if="settleForm.result === 'win'" class="grid gap-3 sm:grid-cols-2">
-            <label class="grid gap-1 text-sm">
-              <span class="text-muted-foreground">Retorno bruto</span>
-              <input v-model="settleForm.actual_gross_return" type="number" step="0.01" min="0" class="rounded-md border border-input bg-background px-3 py-2" />
-            </label>
-            <label class="grid gap-1 text-sm">
-              <span class="text-muted-foreground">Lucro líquido</span>
-              <input v-model="settleForm.profit_loss" type="number" step="0.01" class="rounded-md border border-input bg-background px-3 py-2" />
-            </label>
+          <div v-if="settlementPreview" class="rounded-md border border-border bg-muted/40 p-3 text-sm space-y-2">
+            <div class="flex justify-between gap-4">
+              <span class="text-muted-foreground">Stake já debitada</span>
+              <span class="tabular-nums font-medium">{{ formatUnits(settlementPreview.stakeDebited) }}</span>
+            </div>
+
+            <template v-if="settleForm.result === 'win'">
+              <div class="flex justify-between gap-4">
+                <span class="text-muted-foreground">Retorno bruto</span>
+                <span class="tabular-nums font-medium">{{ formatUnits(settlementPreview.grossReturn ?? 0) }}</span>
+              </div>
+              <div class="flex justify-between gap-4">
+                <span class="text-muted-foreground">Lucro líquido</span>
+                <span class="tabular-nums font-medium">{{ formatUnits(settlementPreview.netProfit ?? 0) }}</span>
+              </div>
+            </template>
+
+            <template v-else-if="settleForm.result === 'loss'">
+              <div class="flex justify-between gap-4">
+                <span class="text-muted-foreground">Crédito de liquidação</span>
+                <span class="tabular-nums font-medium">{{ formatUnits(settlementPreview.settlementCredit) }}</span>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="flex justify-between gap-4">
+                <span class="text-muted-foreground">Stake devolvida</span>
+                <span class="tabular-nums font-medium">{{ formatUnits(settlementPreview.settlementCredit) }}</span>
+              </div>
+            </template>
+
+            <div class="flex justify-between gap-4 border-t border-border pt-2">
+              <span class="text-muted-foreground">P/L final</span>
+              <span class="tabular-nums font-semibold">{{ formatUnits(settlementPreview.finalPl) }}</span>
+            </div>
           </div>
 
-          <label v-else-if="settleForm.result === 'loss'" class="grid gap-1 text-sm">
-            <span class="text-muted-foreground">Prejuízo (opcional)</span>
-            <input v-model="settleForm.profit_loss" type="number" step="0.01" max="0" class="rounded-md border border-input bg-background px-3 py-2" :placeholder="`-${settleTarget.stake_amount}`" />
-          </label>
-
-          <p v-else class="text-xs text-muted-foreground">Void devolve o stake à banca.</p>
+          <p class="text-xs text-muted-foreground">
+            O backend calcula os valores financeiros com base no resultado selecionado.
+          </p>
 
           <div class="flex gap-2 justify-end">
             <Button type="button" variant="outline" @click="closeSettleModal">Cancelar</Button>

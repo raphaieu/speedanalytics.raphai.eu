@@ -79,13 +79,19 @@ class ProcessSpeedwayPayloadJob implements ShouldQueue
                 'last_payload_id' => $payloadId,
             ];
 
-            SpeedwayRace::query()->create(array_merge(
+            $race = SpeedwayRace::query()->create(array_merge(
                 $createData,
                 $metricsService->calculate($createData),
             ));
 
+            if ($parsedRace['status'] === 'settled') {
+                SettleDemoOperationsJob::dispatch($race->id);
+            }
+
             return;
         }
+
+        $wasPending = $existing->status === 'pending';
 
         $updates = [
             'status' => $parsedRace['status'],
@@ -126,6 +132,10 @@ class ProcessSpeedwayPayloadJob implements ShouldQueue
             $updates,
             $metricsService->calculate($metricsInput),
         ));
+
+        if ($wasPending && $parsedRace['status'] === 'settled') {
+            SettleDemoOperationsJob::dispatch($existing->id);
+        }
     }
 
     /**

@@ -209,7 +209,7 @@ class DemoManualOperationFlowTest extends TestCase
         $this->assertEquals('100.00', DemoAccount::query()->find($operation->demo_account_id)?->current_balance);
     }
 
-    public function test_settles_operation_explicitly_as_win_with_profit_loss(): void
+    public function test_settles_operation_explicitly_as_win_from_entry_odd(): void
     {
         $operation = $this->operationService->createManualOperation([
             'market_type' => 'winner',
@@ -223,7 +223,6 @@ class DemoManualOperationFlowTest extends TestCase
 
         $settled = $this->operationService->settleOperationExplicitly($operation, [
             'result' => 'win',
-            'profit_loss' => 4,
         ]);
 
         $this->assertSame(DemoOperationResult::Win, $settled->result);

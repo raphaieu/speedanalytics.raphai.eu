@@ -5,7 +5,6 @@ namespace App\Services\Demo;
 use App\Enums\Demo\BankrollTransactionType;
 use App\Models\BankrollTransaction;
 use App\Models\DemoAccount;
-use App\Models\DemoOperation;
 use Illuminate\Support\Facades\DB;
 
 class DemoAccountService
@@ -51,5 +50,51 @@ class DemoAccountService
                 'created_at' => now(),
             ]);
         });
+    }
+
+    /**
+     * @return array{
+     *     initial_balance: string,
+     *     current_balance: string,
+     *     points: list<array{
+     *         at: string,
+     *         balance: string,
+     *         type: string,
+     *         label: string|null,
+     *         operation_id: int|null
+     *     }>
+     * }
+     */
+    public function bankrollCurve(DemoAccount $account): array
+    {
+        $transactions = BankrollTransaction::query()
+            ->where('demo_account_id', $account->id)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        $points = [[
+            'at' => $account->created_at?->toIso8601String() ?? now()->toIso8601String(),
+            'balance' => (string) $account->initial_balance,
+            'type' => 'initial',
+            'label' => 'Saldo inicial',
+            'operation_id' => null,
+        ]];
+
+        foreach ($transactions as $transaction) {
+            $points[] = [
+                'at' => $transaction->created_at?->toIso8601String() ?? now()->toIso8601String(),
+                'balance' => (string) $transaction->balance_after,
+                'type' => $transaction->type->value,
+                'label' => $transaction->description,
+                'operation_id' => $transaction->demo_operation_id,
+            ];
+        }
+
+        return [
+            'initial_balance' => (string) $account->initial_balance,
+            'current_balance' => (string) $account->current_balance,
+            'points' => $points,
+        ];
     }
 }

@@ -137,14 +137,21 @@ class DemoManualOperationService
 
         $result = DemoOperationResult::from($data['result']);
         $stakeAmount = (float) $operation->stake_amount;
+        $entryOdd = isset($operation->entry_odd) ? (float) $operation->entry_odd : null;
 
-        return DB::transaction(function () use ($operation, $data, $result, $stakeAmount): DemoOperation {
+        return DB::transaction(function () use ($operation, $data, $result, $stakeAmount, $entryOdd): DemoOperation {
             $operation = DemoOperation::query()->lockForUpdate()->findOrFail($operation->id);
+
+            if ($operation->status === DemoOperationStatus::Settled) {
+                return $operation->fresh(['journalEntry', 'speedwayRace']);
+            }
+
             $account = DemoAccount::query()->lockForUpdate()->findOrFail($operation->demo_account_id);
 
             [$actualGrossReturn, $profitLoss, $actualNetProfit] = $this->resolveExplicitSettlementAmounts(
                 $result,
                 $stakeAmount,
+                $entryOdd,
                 $data,
             );
 
@@ -211,6 +218,11 @@ class DemoManualOperationService
 
         return DB::transaction(function () use ($operation, $race): DemoOperation {
             $operation = DemoOperation::query()->lockForUpdate()->findOrFail($operation->id);
+
+            if ($operation->status === DemoOperationStatus::Settled) {
+                return $operation->fresh(['journalEntry', 'speedwayRace']);
+            }
+
             $account = DemoAccount::query()->lockForUpdate()->findOrFail($operation->demo_account_id);
 
             $race ??= $operation->speedway_race_id
@@ -283,6 +295,7 @@ class DemoManualOperationService
                     $operation->context_snapshot_json ?? [],
                     [
                         'settlement' => [
+                            'mode' => 'auto',
                             'won' => $won,
                             'race_id' => $race?->id,
                             'race_status' => $race?->status,
@@ -320,6 +333,28 @@ class DemoManualOperationService
     private function resolveExplicitSettlementAmounts(
         DemoOperationResult $result,
         float $stakeAmount,
+        ?float $entryOdd,
+        array $data,
+    ): array {
+        if (($data['settlement_mode'] ?? null) === 'manual') {
+            return $this->resolveManualOverrideSettlementAmounts($result, $stakeAmount, $data);
+        }
+
+        return match ($result) {
+            DemoOperationResult::Void => [$stakeAmount, 0.0, 0.0],
+            DemoOperationResult::Loss => [0.0, round(-$stakeAmount, 2), round(-$stakeAmount, 2)],
+            DemoOperationResult::Win => $this->calculateWinSettlementAmounts($stakeAmount, $entryOdd),
+            default => throw new InvalidArgumentException('Resultado de liquidação inválido.'),
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{0: float, 1: float, 2: float}
+     */
+    private function resolveManualOverrideSettlementAmounts(
+        DemoOperationResult $result,
+        float $stakeAmount,
         array $data,
     ): array {
         if ($result === DemoOperationResult::Void) {
@@ -348,7 +383,22 @@ class DemoManualOperationService
             return [$actualGrossReturn, $actualNetProfit, $actualNetProfit];
         }
 
-        throw new InvalidArgumentException('Informe actual_gross_return ou profit_loss para liquidação green.');
+        throw new InvalidArgumentException('Modo manual exige actual_gross_return ou profit_loss para liquidação green.');
+    }
+
+    /**
+     * @return array{0: float, 1: float, 2: float}
+     */
+    private function calculateWinSettlementAmounts(float $stakeAmount, ?float $entryOdd): array
+    {
+        if ($entryOdd === null || $entryOdd <= 0) {
+            throw new InvalidArgumentException('Operação sem odd de entrada para liquidação green.');
+        }
+
+        $actualGrossReturn = round($stakeAmount * $entryOdd, 2);
+        $actualNetProfit = round($actualGrossReturn - $stakeAmount, 2);
+
+        return [$actualGrossReturn, $actualNetProfit, $actualNetProfit];
     }
 
     private function calculatePotentialGrossReturn(

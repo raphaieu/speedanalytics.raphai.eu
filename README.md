@@ -132,16 +132,16 @@ php artisan speedway:backfill-race-ranks   # preenche rank_* e ordens de mercado
 
 Simulador de entradas fictícias com banca demo e diário operacional.
 
-**Inclui:** UI `/demo/manual`, API `/api/demo/*`, seleção de corridas pending, atalhos de entrada, odd estimada editável.
+**Inclui:** UI `/demo/manual`, API `/api/demo/*`, seleção de corridas pending, atalhos de entrada, odd estimada editável, liquidação automática, curva da banca.
 
-**Não inclui:** Strategy Engine, automação, tickets compostos, captura automática de odds da casa.
+**Não inclui:** Strategy Engine, tickets compostos, captura automática de odds da casa.
 
 ### Fluxo
 
 1. Selecionar corrida **pending** (opcional) ou criar operação avulsa
 2. Usar atalho (favorito, zebra, forecast/tricast sugerido) ou preencher manualmente
 3. Stake debita a banca (`operation_stake`)
-4. Operação fica `open` até liquidação manual green/red/void
+4. Operação fica `open` até liquidação **automática** (corrida `settled`) ou **manual** (green/red/void)
 5. Nota e tags podem ir ao diário (`journal_entries`)
 
 ### Endpoints
@@ -149,11 +149,12 @@ Simulador de entradas fictícias com banca demo e diário operacional.
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | GET | `/api/demo/account` | Conta demo padrão e saldo |
+| GET | `/api/demo/account/bankroll-curve` | Série temporal da banca |
 | POST | `/api/demo/account/adjust-bankroll` | Ajuste manual (`amount`, `description`) |
 | GET | `/api/demo/pending-races?limit=12` | Corridas pending + `quick_entries` |
 | GET | `/api/demo/operations?status=open\|settled` | Listar operações manuais |
 | POST | `/api/demo/operations` | Criar operação manual |
-| POST | `/api/demo/operations/{id}/settle` | Liquidar (`result`: `win` \| `loss` \| `void`) |
+| POST | `/api/demo/operations/{id}/settle` | Liquidar manual (`result`: `win` \| `loss` \| `void`; backend calcula valores) |
 | POST | `/api/demo/operations/{id}/journal` | Entrada de diário avulsa |
 
 ### Regras de entrada (MVP)

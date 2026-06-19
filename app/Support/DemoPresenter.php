@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Enums\Demo\DemoOperationStatus;
 use App\Models\DemoAccount;
 use App\Models\DemoOperation;
 use App\Models\JournalEntry;
@@ -63,10 +64,36 @@ class DemoPresenter
             'entry_odd' => $operation->entry_odd,
             'opened_at' => $operation->opened_at?->toIso8601String(),
             'settled_at' => $operation->settled_at?->toIso8601String(),
+            'settlement_mode' => self::settlementMode($operation),
             'journal' => $operation->journalEntry
                 ? self::journal($operation->journalEntry)
                 : null,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function bankrollCurve(array $curve): array
+    {
+        return $curve;
+    }
+
+    private static function settlementMode(DemoOperation $operation): ?string
+    {
+        if ($operation->status !== DemoOperationStatus::Settled) {
+            return null;
+        }
+
+        $settlement = $operation->context_snapshot_json['settlement'] ?? null;
+
+        if (! is_array($settlement)) {
+            return null;
+        }
+
+        $mode = $settlement['mode'] ?? null;
+
+        return is_string($mode) ? $mode : null;
     }
 
     /**
