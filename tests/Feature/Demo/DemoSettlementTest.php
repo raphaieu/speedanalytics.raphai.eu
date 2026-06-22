@@ -117,6 +117,68 @@ class DemoSettlementTest extends TestCase
         $this->assertEquals('100.00', $account->fresh()->current_balance);
     }
 
+    public function test_winner_auto_settles_green_when_position_matches(): void
+    {
+        $race = $this->createSettledRace([
+            'external_id' => 'auto-winner-green',
+            'winner_position' => 2,
+        ]);
+
+        $operation = $this->operationService->createManualOperation([
+            'speedway_race_id' => $race->id,
+            'market_type' => 'winner',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_odd' => 4.00,
+            'entry_position' => 2,
+            'entry_payload_json' => ['position' => 2, 'odd' => 4.00],
+            'risk_enforced' => false,
+        ]);
+
+        SettleDemoOperationsJob::dispatchSync($race->id);
+
+        $settled = $operation->fresh();
+        $this->assertSame(DemoOperationResult::Win, $settled->result);
+        $this->assertEquals('4.00', $settled->actual_gross_return);
+        $this->assertEquals('3.00', $settled->profit_loss);
+        $this->assertEquals('103.00', DemoAccount::query()->find($operation->demo_account_id)?->current_balance);
+    }
+
+    public function test_winner_auto_settles_red_without_extra_debit(): void
+    {
+        $race = $this->createSettledRace([
+            'external_id' => 'auto-winner-red',
+            'winner_position' => 1,
+        ]);
+
+        $operation = $this->operationService->createManualOperation([
+            'speedway_race_id' => $race->id,
+            'market_type' => 'winner',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_odd' => 4.00,
+            'entry_position' => 2,
+            'entry_payload_json' => ['position' => 2, 'odd' => 4.00],
+            'risk_enforced' => false,
+        ]);
+
+        $this->assertEquals('99.00', DemoAccount::query()->find($operation->demo_account_id)?->current_balance);
+
+        SettleDemoOperationsJob::dispatchSync($race->id);
+
+        $settled = $operation->fresh();
+        $this->assertSame(DemoOperationResult::Loss, $settled->result);
+        $this->assertEquals('0.00', $settled->actual_gross_return);
+        $this->assertEquals('-1.00', $settled->profit_loss);
+        $this->assertEquals('99.00', DemoAccount::query()->find($operation->demo_account_id)?->current_balance);
+
+        $this->assertDatabaseHas('bankroll_transactions', [
+            'demo_operation_id' => $operation->id,
+            'type' => BankrollTransactionType::OperationSettlement->value,
+            'amount' => '0.00',
+        ]);
+    }
+
     public function test_forecast_auto_settles_loss_when_order_differs(): void
     {
         $race = $this->createSettledRace([

@@ -91,3 +91,27 @@ export function formatUnits(value?: string | number | null): string {
   const prefix = num > 0 ? '+' : '';
   return `${prefix}${num.toFixed(2)}u`;
 }
+
+export function formatCountdown(totalSeconds?: number | null): string {
+  if (totalSeconds === null || totalSeconds === undefined) return '—';
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+}
+
+export function formatSecondsAgo(totalSeconds?: number | null): string {
+  if (totalSeconds === null || totalSeconds === undefined) return '—';
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h`;
+}
+
+export function isSameDayBr(isoDate?: string | null, reference = todayBr()): boolean {
+  if (!isoDate) return false;
+  const date = new Date(isoDate).toLocaleDateString('sv-SE', { timeZone: TIMEZONE });
+  return date === reference;
+}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router';
 import { Separator } from '@/components/ui/separator';
 
 type GlossaryItem = {
@@ -124,6 +125,13 @@ const analyticsConcepts: GlossaryItem[] = [
 
 <template>
   <div class="space-y-6">
+    <RouterLink
+      to="/"
+      class="inline-block text-sm text-muted-foreground transition hover:text-foreground"
+    >
+      ← Dashboard
+    </RouterLink>
+
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Glossário</h1>
       <p class="text-sm text-muted-foreground">

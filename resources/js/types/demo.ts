@@ -42,6 +42,11 @@ export type DemoOperation = {
     status: string;
     race_hour: number | null;
     race_minute: number | null;
+    winner_position?: number | null;
+    winner_color?: string | null;
+    result_forecast_order?: string | null;
+    result_tricast_order?: string | null;
+    underdog_position?: number | null;
   } | null;
   market_type: 'winner' | 'forecast' | 'tricast';
   bet_type: 'single' | 'combo';
@@ -55,7 +60,9 @@ export type DemoOperation = {
   potential_gross_return: string;
   potential_net_profit: string;
   actual_gross_return: string | null;
+  actual_net_profit: string | null;
   profit_loss: string | null;
+  bankroll_after: string | null;
   entry_position: number | null;
   entry_color: string | null;
   entry_odd: string | null;
@@ -82,6 +89,19 @@ export type QuickEntry = {
   helper_text?: string | null;
 };
 
+export type RaceTimingStatus = 'upcoming' | 'live' | 'late' | 'stale' | 'unknown';
+
+export type RaceTiming = {
+  seconds_to_start: number | null;
+  seconds_since_start: number | null;
+  timing_status: RaceTimingStatus;
+  is_stale: boolean;
+  starts_at_iso: string | null;
+  starts_at_label: string | null;
+  starts_at_br_label?: string | null;
+  schedule_time_label?: string | null;
+};
+
 export type PendingDemoRace = {
   id: number;
   external_id: string;
@@ -106,11 +126,17 @@ export type PendingDemoRace = {
   market_rank_forecast_order: string | null;
   market_rank_tricast_order: string | null;
   quick_entries: QuickEntry[];
-};
+} & RaceTiming;
 
 export type PendingDemoRacesResponse = {
   data: PendingDemoRace[];
-  meta: { total: number; limit: number };
+  meta: {
+    total: number;
+    limit: number;
+    pending_total?: number;
+    stale_pending?: number;
+    actionable?: number;
+  };
 };
 
 export type QuickPresetId =

@@ -109,6 +109,8 @@ class ProcessSpeedwayPayloadJob implements ShouldQueue
 
         if ($parsedRace['status'] === 'settled') {
             $updates['settled_at'] = $existing->settled_at ?? $capturedAt;
+            $updates['stale_at'] = null;
+            $updates['stale_reason'] = null;
             $updates['raw_result_payload'] = $parsedRace['raw'];
             $updates['winner_position'] = $parsedRace['winner_position'];
             $updates['winner_color'] = $parsedRace['winner_color'];

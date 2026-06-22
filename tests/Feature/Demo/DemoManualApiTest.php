@@ -4,7 +4,9 @@ namespace Tests\Feature\Demo;
 
 use App\Models\DemoOperation;
 use App\Models\SpeedwayRace;
+use App\Services\Speedway\RaceTimingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class DemoManualApiTest extends TestCase
@@ -88,6 +90,42 @@ class DemoManualApiTest extends TestCase
 
         $this->getJson('/api/demo/operations?status=settled')
             ->assertJsonPath('data.0.settlement_mode', 'manual');
+    }
+
+    public function test_operation_exposes_linked_race_result_fields(): void
+    {
+        $race = SpeedwayRace::query()->create([
+            'external_id' => 'api-race-result-fields',
+            'status' => 'settled',
+            'race_hour' => '9',
+            'race_minute' => '7',
+            'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
+            'winner_position' => 4,
+            'winner_color' => 'Roxo',
+            'result_forecast_order' => '4-2',
+            'result_tricast_order' => '4-2-1',
+            'underdog_position' => 2,
+            'underdog_odd' => 8.00,
+            'first_seen_at' => now()->subMinutes(5),
+            'settled_at' => now(),
+        ]);
+
+        $this->postJson('/api/demo/operations', [
+            'speedway_race_id' => $race->id,
+            'market_type' => 'forecast',
+            'bet_type' => 'single',
+            'stake_amount' => 1,
+            'entry_odd' => 8.58,
+            'entry_payload_json' => ['order' => '2-1', 'odd' => 8.58],
+            'risk_enforced' => false,
+        ])->assertCreated();
+
+        $this->getJson('/api/demo/operations?status=open')
+            ->assertJsonPath('data.0.race.external_id', 'api-race-result-fields')
+            ->assertJsonPath('data.0.race.result_forecast_order', '4-2')
+            ->assertJsonPath('data.0.race.result_tricast_order', '4-2-1')
+            ->assertJsonPath('data.0.race.winner_position', 4)
+            ->assertJsonPath('data.0.race.underdog_position', 2);
     }
 
     public function test_creates_manual_operation_via_api(): void
@@ -222,11 +260,13 @@ class DemoManualApiTest extends TestCase
 
     public function test_lists_pending_races_for_demo_picker(): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-06-22 20:00:00', RaceTimingService::TIMEZONE));
+
         SpeedwayRace::query()->create([
             'external_id' => 'demo-pending-1',
             'status' => 'pending',
-            'race_hour' => 20,
-            'race_minute' => 15,
+            'race_hour' => '0',
+            'race_minute' => '15',
             'pilot_odds_raw' => '3.20|8.00|2.45|5.00',
             'rank_1_position' => 3,
             'rank_1_odd' => 2.45,
@@ -268,6 +308,8 @@ class DemoManualApiTest extends TestCase
             ->assertJsonPath('data.0.quick_entries.2.entry_odd', 5.10)
             ->assertJsonPath('data.0.quick_entries.3.id', 'tricast_suggested')
             ->assertJsonPath('data.0.quick_entries.3.label', 'Tricast 3-1-4');
+
+        Carbon::setTestNow();
     }
 
     public function test_quick_entry_tricast_returns_estimated_pricing_status(): void

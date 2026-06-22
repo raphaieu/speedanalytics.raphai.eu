@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { apiGet, apiPost } from '@/composables/useApi';
-import { formatDateTimeBr, formatUnits } from '@/lib/format';
+import { formatCountdown, formatDateTimeBr, formatRelativeBr, formatSecondsAgo, formatUnits, isSameDayBr } from '@/lib/format';
 import { formatScheduleSlot, PILOT_POSITION_COLORS } from '@/lib/speedway';
 import type {
   DemoAccount,
   DemoBankrollCurve as DemoBankrollCurveData,
   DemoOperation,
   PendingDemoRace,
+  PendingDemoRacesResponse,
   PricingStatus,
   QuickEntry,
   QuickPresetId,
 } from '@/types/demo';
 import DemoBankrollCurve from '@/components/demo/DemoBankrollCurve.vue';
+import DemoOperationOutcome from '@/components/demo/DemoOperationOutcome.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,8 +46,16 @@ const openOperations = ref<DemoOperation[]>([]);
 const settledOperations = ref<DemoOperation[]>([]);
 const activeTab = ref<'open' | 'settled'>('open');
 const pendingRaces = ref<PendingDemoRace[]>([]);
+const pendingMeta = ref<{ stale_pending?: number; actionable?: number }>({});
 const selectedRace = ref<PendingDemoRace | null>(null);
 const contextSnapshot = ref<Record<string, unknown> | null>(null);
+const collectorStatus = ref<{
+  effective_status?: string;
+  last_payload_at?: string | null;
+  payload_age_seconds?: number | null;
+  is_payload_stale?: boolean;
+} | null>(null);
+const lastRefreshAt = ref<Date | null>(null);
 
 const pricingMeta = reactive({
   pricing_status: null as PricingStatus | null,
@@ -160,7 +170,50 @@ const settledSummary = computed(() => {
   return { wins, losses, totalPl, count: settledOperations.value.length };
 });
 
+const dailyPl = computed(() =>
+  settledOperations.value
+    .filter((operation) => isSameDayBr(operation.settled_at))
+    .reduce((sum, operation) => sum + Number.parseFloat(operation.profit_loss ?? '0'), 0),
+);
+
+const nextActionableRace = computed(() => pendingRaces.value[0] ?? null);
+const liveRace = computed(
+  () => pendingRaces.value.find((race) => race.timing_status === 'live') ?? null,
+);
+
+const entryPreview = computed(() => {
+  const stake = Number.parseFloat(operationForm.stake_amount);
+  const odd = operationForm.entry_odd ? Number.parseFloat(operationForm.entry_odd) : null;
+  const hasValidStake = !Number.isNaN(stake) && stake > 0;
+  const grossReturn = odd && !Number.isNaN(odd) ? stake * odd : null;
+
+  return {
+    market: marketLabels[operationForm.market_type],
+    entry:
+      operationForm.market_type === 'winner'
+        ? operationForm.entry_position
+          ? `P${operationForm.entry_position}`
+          : '—'
+        : operationForm.order || '—',
+    odd: odd && !Number.isNaN(odd) ? odd.toFixed(2) : null,
+    stake: hasValidStake ? stake.toFixed(2) : null,
+    grossReturn: grossReturn !== null ? grossReturn.toFixed(2) : null,
+    missingOddWarning:
+      operationForm.market_type !== 'winner' && (!odd || Number.isNaN(odd))
+        ? 'Sem odd: resultado não terá P/L confiável'
+        : null,
+  };
+});
+
+const refreshAgeLabel = computed(() => {
+  if (!lastRefreshAt.value) return null;
+  const seconds = Math.round((Date.now() - lastRefreshAt.value.getTime()) / 1000);
+  return formatSecondsAgo(seconds);
+});
+
 let operationsPollTimer: ReturnType<typeof setInterval> | null = null;
+let pendingPollTimer: ReturnType<typeof setInterval> | null = null;
+let collectorPollTimer: ReturnType<typeof setInterval> | null = null;
 
 const oddHint = computed(() => {
   switch (pricingMeta.pricing_status) {
@@ -386,6 +439,33 @@ async function loadBankrollCurve() {
   bankrollCurve.value = curveRes.data;
 }
 
+async function refreshPendingRacesQuietly() {
+  try {
+    const pendingRes = await apiGet<PendingDemoRacesResponse>('/demo/pending-races?limit=12');
+    pendingRaces.value = pendingRes.data;
+    pendingMeta.value = pendingRes.meta;
+
+    if (
+      selectedRace.value
+      && !pendingRaces.value.some((race) => race.id === selectedRace.value?.id)
+    ) {
+      clearSelectedRace();
+    }
+
+    lastRefreshAt.value = new Date();
+  } catch {
+    // polling silencioso
+  }
+}
+
+async function refreshCollectorStatusQuietly() {
+  try {
+    collectorStatus.value = await apiGet('/collector/status');
+  } catch {
+    // polling silencioso
+  }
+}
+
 async function refreshOperationsQuietly() {
   try {
     const [accountRes, openRes, settledRes, curveRes] = await Promise.all([
@@ -399,28 +479,49 @@ async function refreshOperationsQuietly() {
     openOperations.value = openRes.data;
     settledOperations.value = settledRes.data;
     bankrollCurve.value = curveRes.data;
+    lastRefreshAt.value = new Date();
   } catch {
     // polling silencioso
   }
 }
 
-function stopOperationsPolling() {
+function stopPolling() {
   if (operationsPollTimer !== null) {
     clearInterval(operationsPollTimer);
     operationsPollTimer = null;
   }
+  if (pendingPollTimer !== null) {
+    clearInterval(pendingPollTimer);
+    pendingPollTimer = null;
+  }
+  if (collectorPollTimer !== null) {
+    clearInterval(collectorPollTimer);
+    collectorPollTimer = null;
+  }
 }
 
-function syncOperationsPolling() {
-  stopOperationsPolling();
-
-  if (openOperations.value.length === 0) {
-    return;
-  }
+function startPolling() {
+  stopPolling();
 
   operationsPollTimer = setInterval(() => {
     void refreshOperationsQuietly();
-  }, 30_000);
+  }, 12_000);
+
+  pendingPollTimer = setInterval(() => {
+    void refreshPendingRacesQuietly();
+  }, 12_000);
+
+  collectorPollTimer = setInterval(() => {
+    void refreshCollectorStatusQuietly();
+  }, 20_000);
+}
+
+function stopOperationsPolling() {
+  stopPolling();
+}
+
+function syncOperationsPolling() {
+  startPolling();
 }
 
 async function loadData() {
@@ -432,7 +533,7 @@ async function loadData() {
       apiGet<{ data: DemoAccount }>('/demo/account'),
       apiGet<{ data: DemoOperation[] }>('/demo/operations?status=open'),
       apiGet<{ data: DemoOperation[] }>('/demo/operations?status=settled'),
-      apiGet<{ data: PendingDemoRace[] }>('/demo/pending-races?limit=12'),
+      apiGet<PendingDemoRacesResponse>('/demo/pending-races?limit=12'),
       apiGet<{ data: DemoBankrollCurveData }>('/demo/account/bankroll-curve'),
     ]);
 
@@ -440,8 +541,11 @@ async function loadData() {
     openOperations.value = openRes.data;
     settledOperations.value = settledRes.data;
     pendingRaces.value = pendingRes.data;
+    pendingMeta.value = pendingRes.meta;
     bankrollCurve.value = curveRes.data;
-    syncOperationsPolling();
+    await refreshCollectorStatusQuietly();
+    lastRefreshAt.value = new Date();
+    startPolling();
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Falha ao carregar demo.';
   } finally {
@@ -562,16 +666,6 @@ async function submitSettlement() {
   }
 }
 
-function raceLabel(operation: DemoOperation): string {
-  if (!operation.race) {
-    return operation.speedway_race_id ? `Corrida #${operation.speedway_race_id}` : 'Sem corrida';
-  }
-
-  const hh = String(operation.race.race_hour ?? 0).padStart(2, '0');
-  const mm = String(operation.race.race_minute ?? 0).padStart(2, '0');
-  return `${hh}:${mm} · ${operation.race.external_id}`;
-}
-
 function entrySummary(operation: DemoOperation): string {
   if (operation.market_type === 'winner') {
     const parts = [];
@@ -596,8 +690,39 @@ function operationAwaitingAutoSettlement(operation: DemoOperation): boolean {
   return operation.status === 'open' && operation.race?.status === 'settled';
 }
 
+function timingBadgeVariant(status: PendingDemoRace['timing_status']) {
+  if (status === 'live') return 'default';
+  if (status === 'upcoming') return 'secondary';
+  if (status === 'late') return 'outline';
+  return 'destructive';
+}
+
+function timingBadgeLabel(race: PendingDemoRace): string {
+  if (race.timing_status === 'upcoming') {
+    return `começa em ${formatCountdown(race.seconds_to_start)}`;
+  }
+  if (race.timing_status === 'live') return 'ao vivo';
+  if (race.timing_status === 'late') return 'atrasada';
+  if (race.timing_status === 'stale') return 'stale';
+  return 'pending';
+}
+
+function operationAgeLabel(operation: DemoOperation): string | null {
+  if (!operation.opened_at) return null;
+  const seconds = Math.round((Date.now() - new Date(operation.opened_at).getTime()) / 1000);
+  return formatSecondsAgo(seconds);
+}
+
+function collectorPayloadLabel(): string {
+  if (!collectorStatus.value?.last_payload_at) return 'sem payload';
+  if (collectorStatus.value.payload_age_seconds != null) {
+    return `há ${formatSecondsAgo(collectorStatus.value.payload_age_seconds)}`;
+  }
+  return formatRelativeBr(collectorStatus.value.last_payload_at) ?? '—';
+}
+
 onMounted(loadData);
-onUnmounted(stopOperationsPolling);
+onUnmounted(stopPolling);
 
 watch(openOperations, () => {
   syncOperationsPolling();
@@ -620,6 +745,59 @@ watch(openOperations, () => {
     <div v-if="loading" class="text-sm text-muted-foreground">Carregando…</div>
 
     <template v-else>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Card>
+          <CardContent class="p-4">
+            <p class="text-xs text-muted-foreground">Banca atual</p>
+            <p class="text-2xl font-semibold tabular-nums">{{ account?.current_balance }}u</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent class="p-4">
+            <p class="text-xs text-muted-foreground">Operações abertas</p>
+            <p class="text-2xl font-semibold tabular-nums">{{ openOperations.length }}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent class="p-4">
+            <p class="text-xs text-muted-foreground">P/L do dia</p>
+            <p class="text-2xl font-semibold tabular-nums">{{ formatUnits(dailyPl) }}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent class="p-4">
+            <p class="text-xs text-muted-foreground">Último payload</p>
+            <p class="text-sm font-medium">{{ collectorPayloadLabel() }}</p>
+            <p
+              v-if="collectorStatus?.is_payload_stale"
+              class="text-[11px] text-amber-700 dark:text-amber-300"
+            >
+              collector stale
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent class="p-4">
+            <p class="text-xs text-muted-foreground">
+              {{ liveRace ? 'Corrida ao vivo' : 'Próxima corrida' }}
+            </p>
+            <p class="text-sm font-semibold tabular-nums">
+              {{ (liveRace ?? nextActionableRace)?.starts_at_label ?? '—' }}
+            </p>
+            <p
+              v-if="(liveRace ?? nextActionableRace)?.timing_status"
+              class="text-[11px] text-muted-foreground"
+            >
+              {{ timingBadgeLabel((liveRace ?? nextActionableRace)!) }}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <p v-if="refreshAgeLabel" class="text-[11px] text-muted-foreground">
+        Última atualização {{ refreshAgeLabel }}
+      </p>
+
       <Card>
         <CardHeader>
           <CardTitle class="text-base">Banca demo</CardTitle>
@@ -665,53 +843,60 @@ watch(openOperations, () => {
       <Card>
         <CardHeader>
           <CardTitle class="text-base">Próximas corridas</CardTitle>
-          <CardDescription>Corridas pending disponíveis para vincular à operação.</CardDescription>
+          <CardDescription>
+            Apenas corridas acionáveis.
+            <span v-if="pendingMeta.stale_pending">
+              {{ pendingMeta.stale_pending }} stale ocultas.
+            </span>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <p v-if="pendingRaces.length === 0" class="text-sm text-muted-foreground">
-            Nenhuma corrida pending no momento.
+            Nenhuma corrida acionável no momento.
           </p>
 
-          <div v-else class="-mx-1 flex gap-3 overflow-x-auto pb-1">
+          <div
+            v-else
+            class="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] max-sm:flex max-sm:gap-3 max-sm:overflow-x-auto max-sm:snap-x max-sm:snap-mandatory max-sm:pb-1"
+          >
             <article
               v-for="race in pendingRaces"
               :key="race.id"
-              class="min-w-[220px] shrink-0 rounded-lg border p-3 space-y-2 transition"
-              :class="selectedRace?.id === race.id ? 'border-primary bg-primary/5' : 'border-border'"
+              class="rounded-lg border p-3 space-y-2 transition max-sm:min-w-[190px] max-sm:snap-center"
+              :class="selectedRace?.id === race.id ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-border'"
             >
               <div class="flex items-start justify-between gap-2">
                 <div>
-                  <p class="text-sm font-medium tabular-nums">{{ raceScheduleLabel(race) }}</p>
-                  <p class="text-[11px] text-muted-foreground">#{{ race.external_id }}</p>
+                  <p class="text-2xl font-semibold tabular-nums leading-none">
+                    {{ race.starts_at_label ?? raceScheduleLabel(race) }}
+                  </p>
+                  <p class="mt-1 text-[11px] text-muted-foreground">#{{ race.external_id }}</p>
                 </div>
-                <Badge variant="outline" class="text-[10px]">pending</Badge>
+                <Badge :variant="timingBadgeVariant(race.timing_status)" class="text-[10px]">
+                  {{ timingBadgeLabel(race) }}
+                </Badge>
               </div>
 
-              <div class="grid grid-cols-4 gap-1 text-center text-[10px]">
-                <div
-                  v-for="pilot in race.pilot_odds"
-                  :key="pilot.position"
-                  class="rounded bg-muted/60 px-1 py-1"
-                >
-                  <p class="text-muted-foreground">P{{ pilot.position }}</p>
-                  <p class="font-medium tabular-nums">{{ pilot.odd }}</p>
-                </div>
-              </div>
-
-              <div class="space-y-0.5 text-[11px] text-muted-foreground">
+              <div class="space-y-1 text-[11px]">
                 <p>
-                  Rank 1:
-                  <span class="text-foreground tabular-nums">
+                  Favorito:
+                  <span class="font-medium tabular-nums">
                     P{{ race.rank_1_position ?? '—' }} @{{ race.rank_1_odd ?? '—' }}
                   </span>
                 </p>
                 <p>
+                  Zebra:
+                  <span class="font-medium tabular-nums">
+                    P{{ race.rank_4_position ?? '—' }} @{{ race.rank_4_odd ?? '—' }}
+                  </span>
+                </p>
+                <p>
                   Forecast:
-                  <span class="text-foreground">{{ race.market_rank_forecast_order ?? '—' }}</span>
+                  <span class="font-medium">{{ race.market_rank_forecast_order ?? '—' }}</span>
                 </p>
                 <p>
                   Tricast:
-                  <span class="text-foreground">{{ race.market_rank_tricast_order ?? '—' }}</span>
+                  <span class="font-medium">{{ race.market_rank_tricast_order ?? '—' }}</span>
                 </p>
               </div>
 
@@ -753,33 +938,36 @@ watch(openOperations, () => {
               </div>
 
               <div class="space-y-2">
-                <div class="flex flex-wrap gap-1.5">
-                  <template v-if="primaryQuickEntries.length">
-                    <Button
-                      v-for="entry in primaryQuickEntries"
-                      :key="entry.id"
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      class="text-xs"
-                      @click="applyQuickEntry(entry)"
-                    >
-                      {{ entry.label }}
-                    </Button>
-                  </template>
-                  <template v-else>
-                    <Button
-                      v-for="preset in QUICK_PRESETS"
-                      :key="preset.id"
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      class="text-xs"
-                      @click="applyQuickPreset(preset.id)"
-                    >
-                      {{ preset.label }}
-                    </Button>
-                  </template>
+                <div class="space-y-1">
+                  <p class="text-[11px] font-medium text-foreground">Atalhos principais</p>
+                  <div class="flex flex-wrap gap-1.5">
+                    <template v-if="primaryQuickEntries.length">
+                      <Button
+                        v-for="entry in primaryQuickEntries"
+                        :key="entry.id"
+                        type="button"
+                        size="sm"
+                        variant="default"
+                        class="text-xs shadow-sm"
+                        @click="applyQuickEntry(entry)"
+                      >
+                        {{ entry.label }}
+                      </Button>
+                    </template>
+                    <template v-else>
+                      <Button
+                        v-for="preset in QUICK_PRESETS"
+                        :key="preset.id"
+                        type="button"
+                        size="sm"
+                        variant="default"
+                        class="text-xs shadow-sm"
+                        @click="applyQuickPreset(preset.id)"
+                      >
+                        {{ preset.label }}
+                      </Button>
+                    </template>
+                  </div>
                 </div>
                 <div v-if="alternateQuickEntries.length" class="space-y-1">
                   <p class="text-[11px] text-muted-foreground">Outras ordens</p>
@@ -789,8 +977,8 @@ watch(openOperations, () => {
                       :key="entry.id"
                       type="button"
                       size="sm"
-                      variant="outline"
-                      class="text-xs"
+                      variant="ghost"
+                      class="text-xs text-muted-foreground hover:text-foreground"
                       @click="applyQuickEntry(entry)"
                     >
                       {{ entry.label }}
@@ -803,6 +991,21 @@ watch(openOperations, () => {
             <p v-else class="text-xs text-muted-foreground">
               Selecione uma corrida acima ou deixe em branco para operação sem vínculo.
             </p>
+
+            <div
+              v-if="operationForm.market_type || operationForm.stake_amount"
+              class="rounded-lg border border-border bg-muted/30 p-3 text-sm space-y-1"
+            >
+              <p class="font-medium">Resumo da entrada</p>
+              <p>Mercado: {{ entryPreview.market }}</p>
+              <p>Entrada: {{ entryPreview.entry }}</p>
+              <p>Stake: {{ entryPreview.stake ?? '—' }}u</p>
+              <p>Odd: {{ entryPreview.odd ?? '—' }}</p>
+              <p>Retorno potencial: {{ entryPreview.grossReturn ? `${entryPreview.grossReturn}u` : '—' }}</p>
+              <p v-if="entryPreview.missingOddWarning" class="text-xs text-amber-700 dark:text-amber-300">
+                {{ entryPreview.missingOddWarning }}
+              </p>
+            </div>
 
             <div class="grid gap-3 sm:grid-cols-2">
               <label class="grid gap-1 text-sm">
@@ -900,7 +1103,9 @@ watch(openOperations, () => {
               />
             </label>
 
-            <Button type="submit" :disabled="saving" class="w-full sm:w-auto">Registrar entrada</Button>
+            <Button type="submit" :disabled="saving" class="w-full sm:w-auto" size="lg">
+              Registrar entrada
+            </Button>
           </form>
         </CardContent>
       </Card>
@@ -939,7 +1144,7 @@ watch(openOperations, () => {
             v-if="hasAwaitingAutoSettlement"
             class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
           >
-            Corrida encerrada — liquidação automática em andamento. A página atualiza a cada 30s.
+            Corrida encerrada — liquidação automática em andamento. Atualização a cada 12s.
           </p>
         </CardHeader>
         <CardContent class="space-y-3">
@@ -950,56 +1155,68 @@ watch(openOperations, () => {
           <article
             v-for="operation in displayedOperations"
             :key="operation.id"
-            class="rounded-lg border border-border p-3 space-y-2"
+            class="rounded-lg border border-border p-3 space-y-3"
           >
-            <div class="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p class="font-medium text-sm">
-                  #{{ operation.id }} · {{ marketLabels[operation.market_type] }} · {{ entrySummary(operation) }}
-                </p>
-                <p class="text-xs text-muted-foreground">{{ raceLabel(operation) }}</p>
-              </div>
-              <div class="flex flex-wrap gap-1">
-                <Badge :variant="resultVariant(operation.result)">
-                  {{ resultLabel(operation.result) }}
-                </Badge>
-                <Badge
-                  v-if="settlementModeLabel(operation.settlement_mode)"
-                  variant="outline"
-                >
-                  {{ settlementModeLabel(operation.settlement_mode) }}
-                </Badge>
-                <Badge
-                  v-if="operationAwaitingAutoSettlement(operation)"
-                  variant="secondary"
-                >
-                  Aguardando auto
-                </Badge>
-                <Badge v-if="operation.after_stop" variant="outline">after stop</Badge>
-                <Badge v-if="!operation.risk_enforced" variant="secondary">sem risco</Badge>
-              </div>
-            </div>
+            <DemoOperationOutcome :operation="operation">
+              <template #badges>
+                <div class="flex flex-wrap gap-1">
+                  <Badge :variant="resultVariant(operation.result)">
+                    {{ resultLabel(operation.result) }}
+                  </Badge>
+                  <Badge
+                    v-if="settlementModeLabel(operation.settlement_mode)"
+                    variant="outline"
+                  >
+                    {{ settlementModeLabel(operation.settlement_mode) }}
+                  </Badge>
+                  <Badge
+                    v-if="operationAwaitingAutoSettlement(operation)"
+                    variant="secondary"
+                  >
+                    Aguardando auto
+                  </Badge>
+                  <Badge v-if="operation.after_stop" variant="outline">after stop</Badge>
+                  <Badge v-if="!operation.risk_enforced" variant="secondary">sem risco</Badge>
+                </div>
+              </template>
+            </DemoOperationOutcome>
 
-            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4 lg:grid-cols-6">
               <div>
                 <span class="text-muted-foreground">Stake</span>
                 <p class="tabular-nums">{{ operation.stake_amount }}u</p>
               </div>
               <div>
-                <span class="text-muted-foreground">Potencial</span>
-                <p class="tabular-nums">{{ formatUnits(operation.potential_net_profit) }}</p>
+                <span class="text-muted-foreground">Odd</span>
+                <p class="tabular-nums">{{ operation.entry_odd ?? '—' }}</p>
+              </div>
+              <div>
+                <span class="text-muted-foreground">Retorno pot.</span>
+                <p class="tabular-nums">{{ formatUnits(operation.potential_gross_return) }}</p>
+              </div>
+              <div v-if="operation.status === 'open'">
+                <span class="text-muted-foreground">Status</span>
+                <p>Aguardando resultado</p>
+              </div>
+              <div v-if="operation.status === 'open' && operationAgeLabel(operation)">
+                <span class="text-muted-foreground">Aberta há</span>
+                <p>{{ operationAgeLabel(operation) }}</p>
+              </div>
+              <div v-if="operation.status === 'settled'">
+                <span class="text-muted-foreground">Retorno bruto</span>
+                <p class="tabular-nums">{{ formatUnits(operation.actual_gross_return) }}</p>
               </div>
               <div v-if="operation.status === 'settled'">
                 <span class="text-muted-foreground">P/L</span>
                 <p class="tabular-nums">{{ formatUnits(operation.profit_loss) }}</p>
               </div>
+              <div v-if="operation.status === 'settled' && operation.bankroll_after">
+                <span class="text-muted-foreground">Banca após</span>
+                <p class="tabular-nums">{{ operation.bankroll_after }}u</p>
+              </div>
               <div v-if="operation.status === 'settled' && operation.settled_at">
                 <span class="text-muted-foreground">Liquidada</span>
                 <p>{{ formatDateTimeBr(operation.settled_at) }}</p>
-              </div>
-              <div v-else>
-                <span class="text-muted-foreground">Aberta</span>
-                <p>{{ formatDateTimeBr(operation.opened_at) }}</p>
               </div>
             </div>
 

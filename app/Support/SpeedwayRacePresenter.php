@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\SpeedwayRace;
+use App\Services\Speedway\RaceTimingService;
 
 class SpeedwayRacePresenter
 {
@@ -10,39 +11,45 @@ class SpeedwayRacePresenter
      * @param  array<string, mixed>  $calculated  métricas calculadas (fallback quando colunas ainda não persistidas)
      * @return array<string, mixed>
      */
-    public static function pendingForDemo(SpeedwayRace $race, array $calculated = []): array
-    {
+    public static function pendingForDemo(
+        SpeedwayRace $race,
+        array $calculated = [],
+        ?int $maxPendingExternalId = null,
+    ): array {
         $oddsRaw = self::pendingOddsRaw($race) ?? $race->pilot_odds_raw;
         $pilots = self::pilots($oddsRaw, $race);
         $pick = fn (string $key) => $race->getAttribute($key) ?? $calculated[$key] ?? null;
 
-        return [
-            'id' => $race->id,
-            'external_id' => $race->external_id,
-            'status' => $race->status,
-            'schedule_slot' => self::scheduleSlot($race),
-            'race_hour' => $race->race_hour,
-            'race_minute' => $race->race_minute,
-            'pilot_odds_raw' => $oddsRaw,
-            'pilot_odds' => array_map(
-                fn (array $pilot) => ['position' => $pilot['position'], 'odd' => $pilot['odd']],
-                $pilots,
-            ),
-            'rank_1_position' => $pick('rank_1_position'),
-            'rank_1_odd' => $pick('rank_1_odd'),
-            'rank_2_position' => $pick('rank_2_position'),
-            'rank_2_odd' => $pick('rank_2_odd'),
-            'rank_3_position' => $pick('rank_3_position'),
-            'rank_3_odd' => $pick('rank_3_odd'),
-            'rank_4_position' => $pick('rank_4_position'),
-            'rank_4_odd' => $pick('rank_4_odd'),
-            'favorite_position' => $pick('favorite_position'),
-            'favorite_odd' => $pick('favorite_odd'),
-            'underdog_position' => $pick('underdog_position'),
-            'underdog_odd' => $pick('underdog_odd'),
-            'market_rank_forecast_order' => $pick('market_rank_forecast_order'),
-            'market_rank_tricast_order' => $pick('market_rank_tricast_order'),
-        ];
+        return array_merge(
+            [
+                'id' => $race->id,
+                'external_id' => $race->external_id,
+                'status' => $race->status,
+                'schedule_slot' => self::scheduleSlot($race),
+                'race_hour' => $race->race_hour,
+                'race_minute' => $race->race_minute,
+                'pilot_odds_raw' => $oddsRaw,
+                'pilot_odds' => array_map(
+                    fn (array $pilot) => ['position' => $pilot['position'], 'odd' => $pilot['odd']],
+                    $pilots,
+                ),
+                'rank_1_position' => $pick('rank_1_position'),
+                'rank_1_odd' => $pick('rank_1_odd'),
+                'rank_2_position' => $pick('rank_2_position'),
+                'rank_2_odd' => $pick('rank_2_odd'),
+                'rank_3_position' => $pick('rank_3_position'),
+                'rank_3_odd' => $pick('rank_3_odd'),
+                'rank_4_position' => $pick('rank_4_position'),
+                'rank_4_odd' => $pick('rank_4_odd'),
+                'favorite_position' => $pick('favorite_position'),
+                'favorite_odd' => $pick('favorite_odd'),
+                'underdog_position' => $pick('underdog_position'),
+                'underdog_odd' => $pick('underdog_odd'),
+                'market_rank_forecast_order' => $pick('market_rank_forecast_order'),
+                'market_rank_tricast_order' => $pick('market_rank_tricast_order'),
+            ],
+            app(RaceTimingService::class)->presentation($race, null, $maxPendingExternalId),
+        );
     }
 
     /**
@@ -60,13 +67,22 @@ class SpeedwayRacePresenter
     /**
      * @return array<string, mixed>
      */
-    public static function summary(SpeedwayRace $race): array
+    public static function summary(SpeedwayRace $race, ?int $maxPendingExternalId = null): array
     {
         $oddsForForecast = self::oddsForForecast($race);
         $oddsAnalysis = SpeedwayOddsForecast::analyze(
             $oddsForForecast,
             $race->status === 'settled' ? $race->winner_position : null,
         );
+
+        $timing = $race->status === 'pending'
+            ? app(RaceTimingService::class)->presentation($race, null, $maxPendingExternalId)
+            : null;
+
+        $settlementLatencySeconds = null;
+        if ($race->first_seen_at !== null && $race->settled_at !== null) {
+            $settlementLatencySeconds = (int) $race->first_seen_at->diffInSeconds($race->settled_at);
+        }
 
         return [
             'id' => $race->id,
@@ -87,6 +103,10 @@ class SpeedwayRacePresenter
             'pilot_name' => $race->pilot_name,
             'first_seen_at' => $race->first_seen_at?->toIso8601String(),
             'settled_at' => $race->settled_at?->toIso8601String(),
+            'settlement_latency_seconds' => $settlementLatencySeconds,
+            'stale_at' => $race->stale_at?->toIso8601String(),
+            'stale_reason' => $race->stale_reason,
+            'timing' => $timing,
         ];
     }
 

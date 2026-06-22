@@ -81,7 +81,7 @@ async function navigateToSpeedway() {
 async function reloadIfStale() {
   const staleFor = staleForMs();
 
-  if (staleFor < config.staleThresholdMs) {
+  if (staleFor < config.reloadThresholdMs) {
     return;
   }
 
@@ -143,7 +143,7 @@ async function runHealthCheck() {
     return;
   }
 
-  if (staleFor >= config.staleThresholdMs) {
+  if (staleFor >= config.payloadStaleThresholdMs) {
     if (state.payloadCount === 0) {
       logger.warn('Sem payload capturado dentro do limite stale. Recarregando e reaplicando filtros.', {
         stale_for_ms: staleFor,
@@ -156,11 +156,15 @@ async function runHealthCheck() {
         last_error_message: `Sem payload novo há ${Math.round(staleFor / 1000)}s`,
         metadata_json: {
           stale_for_ms: staleFor,
+          payload_stale_threshold_ms: config.payloadStaleThresholdMs,
         },
       });
     }
 
-    await reloadIfStale();
+    if (staleFor >= config.reloadThresholdMs) {
+      await reloadIfStale();
+    }
+
     return;
   }
 
@@ -232,7 +236,9 @@ async function main() {
     futuro: config.speedwayFuturo,
     headless: config.headless,
     health_check_interval_ms: config.healthCheckIntervalMs,
-    stale_threshold_ms: config.staleThresholdMs,
+    collector_interval_ms: config.collectorIntervalMs,
+    payload_stale_threshold_ms: config.payloadStaleThresholdMs,
+    reload_threshold_ms: config.reloadThresholdMs,
   });
 
   const launched = await launchBrowser({ headless: config.headless });

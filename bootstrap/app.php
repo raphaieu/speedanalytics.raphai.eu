@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->job(new SettleDemoOperationsJob)->everyMinute();
+        $schedule->command('speedway:reconcile-pending-races')->everyMinute();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');

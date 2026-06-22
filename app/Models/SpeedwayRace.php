@@ -50,6 +50,8 @@ class SpeedwayRace extends Model
         'tricast_exact_hit',
         'first_seen_at',
         'settled_at',
+        'stale_at',
+        'stale_reason',
         'raw_pending_payload',
         'raw_result_payload',
         'last_payload_id',
@@ -78,6 +80,7 @@ class SpeedwayRace extends Model
             'tricast_exact_hit' => 'boolean',
             'first_seen_at' => 'datetime',
             'settled_at' => 'datetime',
+            'stale_at' => 'datetime',
             'raw_pending_payload' => 'array',
             'raw_result_payload' => 'array',
         ];

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router';
 import type { RaceSummary } from '@/types/race';
+import { formatCountdown, formatSecondsAgo } from '@/lib/format';
 import { formatScheduleSlot, parsePilotOdds, pilotPositionColorClass } from '@/lib/speedway';
 
 defineProps<{
@@ -8,7 +9,22 @@ defineProps<{
 }>();
 
 function scheduleLabel(race: RaceSummary) {
-  return race.schedule_slot ?? formatScheduleSlot(race.race_hour, race.race_minute);
+  return race.timing?.starts_at_label ?? race.schedule_slot ?? formatScheduleSlot(race.race_hour, race.race_minute);
+}
+
+function timingHint(race: RaceSummary): string | null {
+  if (race.status !== 'pending' || !race.timing) return null;
+  if (race.timing.timing_status === 'upcoming') {
+    return `em ${formatCountdown(race.timing.seconds_to_start)}`;
+  }
+  if (race.timing.timing_status === 'live') return 'ao vivo';
+  if (race.timing.timing_status === 'late') return 'atrasada';
+  return null;
+}
+
+function latencyLabel(race: RaceSummary): string | null {
+  if (race.settlement_latency_seconds == null) return null;
+  return `latência ${formatSecondsAgo(race.settlement_latency_seconds)}`;
 }
 </script>
 
@@ -22,6 +38,9 @@ function scheduleLabel(race: RaceSummary) {
     </span>
 
     <div class="min-w-0 flex-1 space-y-0.5">
+      <p v-if="timingHint(race)" class="text-[10px] text-muted-foreground">
+        {{ timingHint(race) }}
+      </p>
       <div v-if="race.status === 'settled'" class="flex items-center gap-2">
         <span
           class="size-2.5 shrink-0 rounded-full"
@@ -79,6 +98,7 @@ function scheduleLabel(race: RaceSummary) {
         <span v-if="race.favorite_won === true">· fav venceu</span>
         <span v-else-if="race.underdog_won === true">· zebra venceu</span>
         <span v-else-if="race.favorite_won === false">· favorito não venceu</span>
+        <span v-if="latencyLabel(race)"> · {{ latencyLabel(race) }}</span>
       </p>
     </div>
   </RouterLink>

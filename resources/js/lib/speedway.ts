@@ -39,7 +39,7 @@ export function statusLabel(status: RaceStatus): string {
   return STATUS_LABELS[status] ?? status;
 }
 
-/** Grade virtual BB Tips — Hora + Minutos (corridas a cada 3 min, não é relógio local). */
+/** Grade virtual BB Tips — Hora + Minutos (+4h vs relógio BR; ex.: BR 20:00 → grade 00:00). */
 export function formatScheduleSlot(hour: string | null, minute: string | null): string {
   const h = hour ?? '?';
   const m = minute?.padStart(2, '0') ?? '??';
@@ -88,6 +88,15 @@ export function tricastFromOdds(raw: string | null): string | null {
 export function favoritePositionFromOdds(raw: string | null): number | null {
   const ranked = rankPilotsByOdds(raw);
   return ranked[0] ?? null;
+}
+
+export function parseOrderPositions(order: string | null | undefined): number[] {
+  if (!order) return [];
+
+  return order
+    .split('-')
+    .map((part) => Number.parseInt(part.trim(), 10))
+    .filter((position) => !Number.isNaN(position) && position >= 1 && position <= 4);
 }
 
 export function pilotColorClass(color?: string | null): string {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SpeedwayRace;
+use App\Services\Speedway\RaceTimingService;
 use App\Support\SpeedwayRacePresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,7 @@ class RaceController extends Controller
 
     private const RACES_PER_DAY = 480;
 
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, RaceTimingService $timingService): JsonResponse
     {
         $timezone = self::TIMEZONE;
         $today = now($timezone)->toDateString();
@@ -34,18 +35,39 @@ class RaceController extends Controller
         $baseQuery = SpeedwayRace::query()
             ->whereBetween('first_seen_at', [$dayStart, $dayEnd]);
 
+        $pendingForDay = (clone $baseQuery)->where('status', 'pending')->get();
+        $globalPending = SpeedwayRace::query()->where('status', 'pending')->get();
+        $maxPendingExternalId = $timingService->maxPendingExternalId($globalPending);
+
+        $actionablePending = $pendingForDay->filter(
+            fn (SpeedwayRace $race) => $timingService->isActionablePending($race, null, $maxPendingExternalId),
+        );
+        $stalePending = $pendingForDay->filter(
+            fn (SpeedwayRace $race) => $timingService->analyze($race, null, $maxPendingExternalId)['is_stale'],
+        );
+
         $dayCounts = [
             'total' => (clone $baseQuery)->count(),
-            'upcoming' => (clone $baseQuery)->where('status', 'pending')->count(),
+            'upcoming' => $actionablePending->count(),
+            'stale_pending' => $stalePending->count(),
             'settled' => (clone $baseQuery)->where('status', 'settled')->count(),
         ];
+
+        $globalActionable = $globalPending->filter(
+            fn (SpeedwayRace $race) => $timingService->isActionablePending($race, null, $maxPendingExternalId),
+        );
+        $globalStale = $globalPending->filter(
+            fn (SpeedwayRace $race) => $timingService->analyze($race, null, $maxPendingExternalId)['is_stale'],
+        );
 
         $paginator = (clone $baseQuery)
             ->orderByDesc('external_id')
             ->paginate($perPage);
 
         return response()->json([
-            'data' => $paginator->getCollection()->map(fn (SpeedwayRace $race) => SpeedwayRacePresenter::summary($race))->values(),
+            'data' => $paginator->getCollection()->map(
+                fn (SpeedwayRace $race) => SpeedwayRacePresenter::summary($race, $maxPendingExternalId),
+            )->values(),
             'meta' => [
                 'total' => $paginator->total(),
                 'per_page' => $paginator->perPage(),
@@ -64,7 +86,8 @@ class RaceController extends Controller
                 ],
                 'global' => [
                     'total' => SpeedwayRace::query()->count(),
-                    'upcoming' => SpeedwayRace::query()->where('status', 'pending')->count(),
+                    'upcoming' => $globalActionable->count(),
+                    'stale_pending' => $globalStale->count(),
                 ],
             ],
         ]);

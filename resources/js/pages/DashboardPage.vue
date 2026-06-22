@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { apiGet } from '@/composables/useApi';
 import { formatDateTimeBr, formatRelativeBr } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -185,6 +186,16 @@ onMounted(async () => {
           </dl>
         </CardContent>
       </Card>
+
+      <RouterLink
+        to="/glossario"
+        class="block rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm transition hover:bg-muted/40"
+      >
+        <p class="font-medium">Glossário</p>
+        <p class="mt-0.5 text-xs text-muted-foreground">
+          Conceitos, métricas e fórmulas usadas nas análises e nas corridas.
+        </p>
+      </RouterLink>
     </template>
   </div>
 </template>

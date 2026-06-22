@@ -20,7 +20,11 @@ type RacesResponse = {
   data: RaceSummary[];
   meta: {
     last_page: number;
-    day: { date: string; is_today: boolean; counts: { upcoming: number } };
+    day: {
+      date: string;
+      is_today: boolean;
+      counts: { upcoming: number; stale_pending?: number; settled: number };
+    };
     calendar: {
       month: string;
       years: string[];
@@ -44,13 +48,22 @@ const calendarMonths = computed(() => calendar.value?.months ?? []);
 const calendarYears = computed(() => calendar.value?.years ?? []);
 const isToday = computed(() => races.value?.meta.day.is_today ?? false);
 const upcomingCount = computed(() => races.value?.meta.day.counts.upcoming ?? 0);
+const stalePendingCount = computed(() => races.value?.meta.day.counts.stale_pending ?? 0);
 
 const upcomingRaces = computed(() =>
-  (races.value?.data ?? []).filter((r) => r.status === 'pending').reverse(),
+  (races.value?.data ?? [])
+    .filter((race) => race.status === 'pending' && !race.timing?.is_stale)
+    .reverse(),
+);
+
+const stalePendingRaces = computed(() =>
+  (races.value?.data ?? [])
+    .filter((race) => race.status === 'pending' && race.timing?.is_stale)
+    .reverse(),
 );
 
 const settledRaces = computed(() =>
-  (races.value?.data ?? []).filter((r) => r.status === 'settled'),
+  (races.value?.data ?? []).filter((race) => race.status === 'settled'),
 );
 
 function onYearChange(event: Event) {
@@ -170,6 +183,18 @@ onMounted(loadRaces);
             :race="race"
           />
         </ul>
+      </div>
+
+      <div
+        v-if="isToday && stalePendingCount > 0"
+        class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm"
+      >
+        <p class="font-medium text-amber-900 dark:text-amber-100">
+          Pendências antigas detectadas
+        </p>
+        <p class="mt-1 text-xs text-muted-foreground">
+          {{ stalePendingCount }} corrida(s) pending stale preservada(s) para auditoria.
+        </p>
       </div>
 
       <div v-if="settledRaces.length === 0" class="py-8 text-center text-sm text-muted-foreground">

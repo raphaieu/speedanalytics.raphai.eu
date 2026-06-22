@@ -1,5 +1,18 @@
 export type RaceStatus = 'pending' | 'settled';
 
+export type RaceTimingStatus = 'upcoming' | 'live' | 'late' | 'stale' | 'unknown';
+
+export type RaceTiming = {
+  seconds_to_start: number | null;
+  seconds_since_start: number | null;
+  timing_status: RaceTimingStatus;
+  is_stale: boolean;
+  starts_at_iso: string | null;
+  starts_at_label: string | null;
+  starts_at_br_label?: string | null;
+  schedule_time_label?: string | null;
+};
+
 export type PilotRow = {
   position: number;
   odd: string;
@@ -36,6 +49,10 @@ export type RaceSummary = {
   pilot_name: string | null;
   first_seen_at: string | null;
   settled_at: string | null;
+  settlement_latency_seconds?: number | null;
+  stale_at?: string | null;
+  stale_reason?: string | null;
+  timing?: RaceTiming | null;
 };
 
 export type RaceDetail = RaceSummary & {
