@@ -45,6 +45,7 @@ npm install
 npm run dev          # terminal 1 — Vite HMR
 php artisan serve --port=9001   # terminal 2 — http://speedanalytics.test
 php artisan queue:work redis    # terminal 3 — processa payloads
+php artisan schedule:work         # terminal 4 — reconcile + liquidação demo (1/min)
 ```
 
 ### Páginas da SPA
@@ -119,8 +120,9 @@ Ver [collector/README.md](collector/README.md).
 ### Comandos artisan
 
 ```bash
-php artisan speedway:recalculate-metrics   # recalcula métricas base
-php artisan speedway:backfill-race-ranks   # preenche rank_* e ordens de mercado/resultado
+php artisan speedway:recalculate-metrics      # recalcula métricas base
+php artisan speedway:backfill-race-ranks        # preenche rank_* e ordens de mercado/resultado
+php artisan speedway:reconcile-pending-races    # marca pending obsoletas (também no scheduler 1/min)
 ```
 
 ### Percentuais na API
@@ -195,6 +197,8 @@ Conta seed: slug `manual-default`, saldo inicial **100u**.
 
 ## Variáveis `.env` (app)
 
+Referência completa para produção: [`.env.coolify.example`](.env.coolify.example).
+
 ```env
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -205,26 +209,49 @@ QUEUE_CONNECTION=redis
 CACHE_STORE=redis
 SPEEDWAY_COLLECTOR_TOKEN=       # POST /api/collector/speedway
 # COLLECTOR_STATUS_PATH=        # default: collector/storage/collector-status.json
+
+# Timing / corridas (defaults em config/speedway.php)
+# SPEEDWAY_TIMEZONE=America/Sao_Paulo
+# SPEEDWAY_RACE_SCHEDULE_OFFSET_HOURS=4      # grade BB Tips = BR + 4h
+# SPEEDWAY_PENDING_STALE_BUFFER_MINUTES=8
+# SPEEDWAY_PENDING_EXTERNAL_ID_LAG=80
+# SPEEDWAY_RACE_LIVE_WINDOW_MINUTES=4
+# SPEEDWAY_COLLECTOR_PAYLOAD_STALE_SECONDS=120
+# SPEEDWAY_RECONCILE_LOOKBACK_HOURS=24
+# SPEEDWAY_RECONCILE_SCAN_LIMIT=200
+```
+
+### Variáveis collector (Coolify / Docker)
+
+```env
+HEALTH_CHECK_INTERVAL_MS=30000
+SPEEDWAY_COLLECTOR_INTERVAL_MS=30000
+PAYLOAD_STALE_THRESHOLD_MS=120000   # status stale ~2 min sem payload novo
+RELOAD_THRESHOLD_MS=300000          # reload da página após ~5 min stale
+# STALE_THRESHOLD_MS=120000         # legado; preferir PAYLOAD_STALE_THRESHOLD_MS
 ```
 
 ## Produção
 
 **URL:** [https://speedanalytics.raphai.eu](https://speedanalytics.raphai.eu)
 
-Stack no **Coolify** (Oracle VPS): `web`, `queue`, `collector`, `mysql`, `redis` — coleta 24/7, API, dashboard, histórico de corridas e **PWA instalável** no celular.
+Stack no **Coolify** (Oracle VPS): `web`, `queue`, **`scheduler`**, `collector`, `mysql`, `redis` — coleta 24/7, API, dashboard, histórico de corridas, reconciliação de pending e **PWA instalável** no celular.
+
+> O serviço **`scheduler`** (`php artisan schedule:work`) é obrigatório: roda `speedway:reconcile-pending-races` e catch-up de liquidação demo a cada minuto.
 
 ## Docker / Coolify (deploy)
 
-Stack completa para **Coolify**: Laravel (nginx + PHP-FPM), MySQL, Redis, queue worker e collector Playwright.
+Stack completa para **Coolify**: Laravel (nginx + PHP-FPM), MySQL, Redis, queue worker, **scheduler** e collector Playwright.
 
 ### 1. Criar resource no Coolify
 
 1. **Project → Add Resource → Docker Compose** (repositório Git)
 2. Compose file: `docker-compose.yml` (raiz)
-3. Copie variáveis de [`.env.coolify.example`](.env.coolify.example) para **Environment Variables**
+3. Copie variáveis de [`.env.coolify.example`](.env.coolify.example) para **Environment Variables** (Laravel + collector — ver comentários no arquivo)
 4. Gere `APP_KEY`: `php artisan key:generate --show`
 5. **Domínio:** atribua `https://speedanalytics.raphai.eu` ao serviço **`web`** (porta 80 do container)
 6. **Pós-deploy** (serviço `web`, ou comando one-shot): `php artisan migrate --force`
+7. Confirme que o serviço **`scheduler`** está **running** (além de `queue` e `collector`)
 
 > Não publique portas no compose — o Traefik/Caddy do Coolify roteia pelo domínio. Bind mounts (`.:/var/www`) não funcionam no Coolify; o código vai embutido na imagem `docker/app/Dockerfile`.
 
@@ -258,7 +285,6 @@ Auth **Sanctum** fica para fase futura (quando houver login de usuários).
 ## Próximos passos
 
 - Strategy Engine e setups
-- Liquidação automática de operações demo ao `settled`
 - Gestão de risco (`RiskSession`, stops, `after_stop` automático)
 - Tickets compostos e calibração de odds estimadas com dados reais
 - Backtests, IA explicativa, relatório diário

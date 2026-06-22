@@ -1,6 +1,6 @@
 # Arquitetura — Speedway Analytics
 
-Última atualização: 2026-06-19
+Última atualização: 2026-06-22
 
 ## Visão geral
 
@@ -15,14 +15,14 @@
                     ┌────────────────────▼─────────────────────┐
                     │  docker-compose.yml                      │
                     │                                          │
-  BB Tips ◄──►      │  ┌────────┐  ┌───────┐  ┌─────────────┐ │
-  Playwright        │  │  web   │  │ queue │  │  collector  │ │
-  Collector ────────┼─►│ nginx  │  │ worker│  │  (headless) │ │
-  POST /api/...     │  │ + PHP  │  └───┬───┘  └──────┬──────┘ │
-                    │  └────┬───┘      │             │        │
-                    │       │     ┌────▼────┐  ┌─────▼─────┐  │
-                    │       └────►│  mysql  │  │   redis   │  │
-                    │             └─────────┘  └───────────┘  │
+  BB Tips ◄──►      │  ┌────────┐  ┌───────┐  ┌───────────┐  ┌─────────────┐ │
+  Playwright        │  │  web   │  │ queue │  │ scheduler │  │  collector  │ │
+  Collector ────────┼─►│ nginx  │  │ worker│  │ schedule  │  │  (headless) │ │
+  POST /api/...     │  │ + PHP  │  └───┬───┘  │   :work   │  └──────┬──────┘ │
+                    │  └────┬───┘      │      └─────┬─────┘         │        │
+                    │       │     ┌────▼────────────▼────┐  ┌─────▼─────┐  │
+                    │       └────►│       mysql          │  │   redis   │  │
+                    │             └──────────────────────┘  └───────────┘  │
                     └──────────────────────────────────────────┘
 
 collector/  (Node 24 + Playwright) — serviço irmão, não dentro do PHP
@@ -117,7 +117,13 @@ php artisan serve
 # Terminal 2 — Vite (HMR)
 npm run dev
 
-# Terminal 3 — Collector (opcional)
+# Terminal 3 — Fila (obrigatório para ingestão)
+php artisan queue:work redis
+
+# Terminal 4 — Scheduler (reconcile pending + liquidação demo catch-up)
+php artisan schedule:work
+
+# Terminal 5 — Collector (opcional)
 cd collector && npm run collect
 ```
 
@@ -184,7 +190,7 @@ Runtime/deploy Node extra além do collector. Descartado.
 ### Produção (2026-06-18) ✓
 
 - [x] Deploy **Coolify** em `https://speedanalytics.raphai.eu`
-- [x] Stack: `web`, `queue`, `collector`, `mysql`, `redis`
+- [x] Stack: `web`, `queue`, **`scheduler`**, `collector`, `mysql`, `redis`
 - [x] Collector Playwright 24h + POST ao Laravel + queue worker
 - [x] Sessão BB Tips via `bbtips-storage-state.json` no volume persistente
 - [x] **PWA** — `vite-plugin-pwa`, install prompt, ícones, service worker
@@ -251,6 +257,32 @@ MarketOddEstimatorService
 - **Odd estimada:** `MarketOddEstimatorService` — produto das odds × multiplicador (`config/speedway.php`)
 - **`after_stop`:** flag manual até existir `RiskSession`
 
+### Timing, stale e reconciliação (2026-06-22)
+
+Corrige pending obsoletas na UI e alinha countdown da grade BB Tips ao horário BR.
+
+```txt
+ProcessSpeedwayPayloadJob / reconcile command
+    │
+    ▼
+RaceTimingService.analyze()
+    ├── starts_at (BR) = grade virtual − offset (+4h default)
+    ├── timing_status: upcoming | live | late | stale
+    └── is_stale: stale_at persistido OU heurística (buffer + lag external_id)
+    │
+    ▼
+PendingRaceReconciliationService  ←  speedway:reconcile-pending-races (scheduler 1/min)
+    └── marca stale_at / stale_reason em pending sem resultado
+```
+
+- **Offset de grade:** `SPEEDWAY_RACE_SCHEDULE_OFFSET_HOURS=4` — slot virtual 00:00 ≈ 20:00 BR
+- **Stale heurístico:** buffer após horário previsto + corrida muito atrás do `external_id` máximo do dia
+- **API demo/corridas:** pending stale excluídas de “próximas”; meta `stale_pending` para alertas
+- **Collector status:** `payload_age_seconds` vs `SPEEDWAY_COLLECTOR_PAYLOAD_STALE_SECONDS` (120s)
+- **Scheduler** (`bootstrap/app.php`): `SettleDemoOperationsJob` + `speedway:reconcile-pending-races` a cada minuto — requer serviço **`scheduler`** no compose (`schedule:work`)
+
+Env vars: `config/speedway.php` · referência Coolify: `.env.coolify.example`.
+
 ### Semântica de previsão
 
 - Forecast e tricast **teóricos** são derivados de odds pré-corrida (`market_rank_*`)
@@ -283,12 +315,14 @@ speedanalytics.raphai.eu/
 │   │   └── DemoPendingRaceController.php
 │   ├── Services/
 │   │   ├── Demo/                 # DemoAccountService, DemoManualOperationService, DemoQuickEntryBuilder
-│   │   ├── Speedway/             # RaceMetricsService
+│   │   ├── Speedway/             # RaceMetricsService, RaceTimingService, PendingRaceReconciliationService
 │   │   └── MarketOddEstimatorService.php
 │   ├── Support/
 │   │   ├── DemoPresenter.php
 │   │   └── SpeedwayRacePresenter.php
-│   └── Jobs/ProcessSpeedwayPayloadJob.php
+│   └── Jobs/
+│       ├── ProcessSpeedwayPayloadJob.php
+│       └── SettleDemoOperationsJob.php
 ├── bootstrap/
 ├── config/
 ├── database/migrations/
@@ -324,6 +358,7 @@ Stack definida em `docker-compose.yml`. O Coolify faz build a partir do Git, inj
 |---------|----------------|-------|
 | `web` | `docker/app/Dockerfile` → target `web` | nginx + PHP-FPM, Laravel + Vue (build Vite na imagem) |
 | `queue` | `docker/app/Dockerfile` → target `worker` | `php artisan queue:work redis` |
+| `scheduler` | `docker/app/Dockerfile` → target `worker` | `php artisan schedule:work` — reconcile pending + liquidação demo (1/min) |
 | `collector` | `docker/collector/Dockerfile` | Playwright headless 24/7 |
 | `mysql` | `mysql:8.4` | Banco persistente (`mysql_data`) |
 | `redis` | `redis:7-alpine` | Fila e cache (`redis_data`) |
@@ -340,8 +375,9 @@ http://web/api/collector/speedway           → rede interna (collector → Lara
 
 - **Sem bind mounts** de código (`.:/var/www`) — o repositório é efêmero no build; tudo entra na imagem
 - **Sem `ports` publicados** — domínio atribuído ao serviço `web` na UI do Coolify
-- Variáveis: `.env.coolify.example` → Environment Variables do resource
+- Variáveis: `.env.coolify.example` → Environment Variables do resource (Laravel **e** collector — ver seções comentadas)
 - Pós-deploy: `php artisan migrate --force` no serviço `web`
+- Verificar serviços **`queue`**, **`scheduler`** e **`collector`** em running após deploy
 - Sessão BB Tips: `npm run login` no PC → copiar `bbtips-storage-state.json` para volume do collector
 
 Guia operacional: [README.md](../README.md#docker--coolify-deploy).

@@ -1548,7 +1548,7 @@ Collector:
 Node.js 24 + Playwright (serviço separado em collector/)
 
 Deploy:
-  Coolify — docker-compose (web, queue, collector, mysql, redis)
+  Coolify — docker-compose (web, queue, scheduler, collector, mysql, redis)
   Produção: https://speedanalytics.raphai.eu (desde 2026-06-18)
 
 Formato mobile:
@@ -2230,7 +2230,7 @@ Produto pode ser interpretado como promessa de lucro.
 * ~~Rodar collector em VPS 24h.~~ — concluído (Coolify, 2026-06-18)
 * ~~Endpoints mínimos de leitura (`GET /api/collector/status`, `GET /api/races`).~~ — concluído
 * ~~Telas Vue: status collector + lista de corridas.~~ — concluído
-* ~~`docker-compose.yml` (web, mysql, redis, queue, collector — Coolify).~~ — concluído
+* ~~`docker-compose.yml` (web, mysql, redis, queue, scheduler, collector — Coolify).~~ — concluído
 * ~~Criar Playwright Collector~~ — concluído (Fase 0)
 * ~~Criar script de login / storageState~~ — concluído (Fase 0)
 

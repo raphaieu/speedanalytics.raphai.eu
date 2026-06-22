@@ -27,6 +27,14 @@ x-app-environment: &app-environment
   REDIS_HOST: redis
   REDIS_PORT: 6379
   SPEEDWAY_COLLECTOR_TOKEN: ${SPEEDWAY_COLLECTOR_TOKEN}
+  SPEEDWAY_TIMEZONE: ${SPEEDWAY_TIMEZONE:-America/Sao_Paulo}
+  SPEEDWAY_RACE_SCHEDULE_OFFSET_HOURS: ${SPEEDWAY_RACE_SCHEDULE_OFFSET_HOURS:-4}
+  SPEEDWAY_PENDING_STALE_BUFFER_MINUTES: ${SPEEDWAY_PENDING_STALE_BUFFER_MINUTES:-8}
+  SPEEDWAY_PENDING_EXTERNAL_ID_LAG: ${SPEEDWAY_PENDING_EXTERNAL_ID_LAG:-80}
+  SPEEDWAY_RACE_LIVE_WINDOW_MINUTES: ${SPEEDWAY_RACE_LIVE_WINDOW_MINUTES:-4}
+  SPEEDWAY_COLLECTOR_PAYLOAD_STALE_SECONDS: ${SPEEDWAY_COLLECTOR_PAYLOAD_STALE_SECONDS:-120}
+  SPEEDWAY_RECONCILE_LOOKBACK_HOURS: ${SPEEDWAY_RECONCILE_LOOKBACK_HOURS:-24}
+  SPEEDWAY_RECONCILE_SCAN_LIMIT: ${SPEEDWAY_RECONCILE_SCAN_LIMIT:-200}
 
 services:
   mysql:
@@ -99,6 +107,24 @@ services:
       redis:
         condition: service_healthy
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+    volumes:
+      - app_storage:/var/www/storage
+      - collector_storage:/var/www/collector/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["php", "artisan", "schedule:work"]
+
   collector:
     build:
       context: ./collector
@@ -115,8 +141,14 @@ services:
       RACES_INDEX_FILE: ./storage/races-index.json
       RUNS_FILE: ./storage/collector-runs.json
       LOG_FILE: ./storage/collector.log
-      HEALTH_CHECK_INTERVAL_MS: ${HEALTH_CHECK_INTERVAL_MS:-60000}
-      STALE_THRESHOLD_MS: ${STALE_THRESHOLD_MS:-300000}
+      HEALTH_CHECK_INTERVAL_MS: ${HEALTH_CHECK_INTERVAL_MS:-30000}
+      SPEEDWAY_COLLECTOR_INTERVAL_MS: ${SPEEDWAY_COLLECTOR_INTERVAL_MS:-30000}
+      PAYLOAD_STALE_THRESHOLD_MS: ${PAYLOAD_STALE_THRESHOLD_MS:-120000}
+      RELOAD_THRESHOLD_MS: ${RELOAD_THRESHOLD_MS:-300000}
+      STALE_THRESHOLD_MS: ${STALE_THRESHOLD_MS:-120000}
+      SPEEDWAY_FILTRO_EXIBICAO: ${SPEEDWAY_FILTRO_EXIBICAO:-Odd_Todas}
+      SPEEDWAY_HORAS: ${SPEEDWAY_HORAS:-Horas48}
+      SPEEDWAY_FUTURO: ${SPEEDWAY_FUTURO:-true}
       SPEEDWAY_COLLECTOR_ENDPOINT: http://web/api/collector/speedway
       SPEEDWAY_COLLECTOR_TOKEN: ${SPEEDWAY_COLLECTOR_TOKEN}
     volumes:

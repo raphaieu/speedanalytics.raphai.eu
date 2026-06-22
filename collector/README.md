@@ -96,7 +96,7 @@ npm run status
 
 - `valid` — JSON recebido com corridas
 - `running` — collector ativo
-- `stale` — sem payload novo por 5 min (reload automático)
+- `stale` — sem payload novo por ~**2 min** (`PAYLOAD_STALE_THRESHOLD_MS=120000`); reload da página após ~**5 min** (`RELOAD_THRESHOLD_MS=300000`)
 - `needs_login` / `expired` — sessão expirada; rode `npm run login`
 - `cloudflare_challenge` — challenge detectado (HTML em vez de JSON)
 - `blocked` / `unknown_error` — falha persistente
@@ -130,12 +130,27 @@ Em produção o collector roda como serviço **`collector`** no `docker-compose.
 
 **Sessão BB Tips na VPS:** login manual no PC (`npm run login`) → copiar `storage/bbtips-storage-state.json` para `/app/storage/` do container collector. Não há credenciais no `.env`.
 
-Variáveis relevantes (`collector/.env` ou Environment Variables do Coolify):
+Variáveis relevantes (`collector/.env`, `.env.coolify.example` ou Environment Variables do Coolify):
 
 ```env
+# Backend Laravel (rede interna do compose)
 SPEEDWAY_COLLECTOR_ENDPOINT=http://web/api/collector/speedway
 SPEEDWAY_COLLECTOR_TOKEN=   # igual ao .env raiz / Coolify
+
+# Freshness / captura (defaults recomendados)
+HEALTH_CHECK_INTERVAL_MS=30000
+SPEEDWAY_COLLECTOR_INTERVAL_MS=30000
+PAYLOAD_STALE_THRESHOLD_MS=120000   # status stale ~2 min
+RELOAD_THRESHOLD_MS=300000          # reload após ~5 min stale
+# STALE_THRESHOLD_MS=120000         # legado; preferir PAYLOAD_STALE_THRESHOLD_MS
+
+# Filtros BB Tips (defaults no compose)
+SPEEDWAY_FILTRO_EXIBICAO=Odd_Todas
+SPEEDWAY_HORAS=Horas48
+SPEEDWAY_FUTURO=true
 ```
+
+No Laravel, `SPEEDWAY_COLLECTOR_PAYLOAD_STALE_SECONDS=120` alinha a API `/api/collector/status` com o threshold do collector.
 
 ## Status
 

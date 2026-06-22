@@ -6,6 +6,50 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Adicionado — Timing, stale e reconciliação operacional (2026-06-22)
+
+Fechamento do ciclo **pending → demo → settled → liquidação** com detecção de corridas obsoletas e jobs agendados em produção.
+
+- **`RaceTimingService`** — fonte canônica de timing: countdown com offset de grade BB Tips (+4h vs horário BR), janela `live`/`late`, detecção de stale por buffer temporal e lag de `external_id`
+- **`PendingRaceReconciliationService`** + comando **`php artisan speedway:reconcile-pending-races`** — marca pending obsoletas a partir de payloads históricos (`stale_at`, `stale_reason`)
+- Migration **`stale_at`**, **`stale_reason`** em `speedway_races`
+- **Scheduler Laravel** (`bootstrap/app.php`): reconcile + `SettleDemoOperationsJob` a cada minuto
+- **Serviço `scheduler`** no `docker-compose.yml` — `php artisan schedule:work` (obrigatório em produção; antes só existia `queue:work`)
+- **`config/speedway.php`** — novas envs de timing/reconciliação (ver README e `.env.coolify.example`)
+- APIs: `GET /api/demo/pending-races` e `GET /api/races` expõem `is_stale`, countdown e metadados; `GET /api/collector/status` inclui `payload_age_seconds` e `effective_status`
+- **`ProcessSpeedwayPayloadJob`** limpa `stale_at` quando corrida transita para `settled`
+- Testes: `RaceTimingServiceTest`, `PendingRaceReconciliationTest`
+
+### Alterado — Collector: thresholds de freshness
+
+Defaults alinhados ao código (`collector/lib/config.js`):
+
+| Variável | Antes (docs/compose) | Agora |
+|----------|----------------------|-------|
+| `HEALTH_CHECK_INTERVAL_MS` | 60000 | **30000** |
+| `PAYLOAD_STALE_THRESHOLD_MS` | *(ausente)* | **120000** (~2 min → status `stale`) |
+| `RELOAD_THRESHOLD_MS` | *(ausente)* | **300000** (~5 min → reload da página) |
+| `SPEEDWAY_COLLECTOR_INTERVAL_MS` | *(ausente)* | **30000** |
+| `STALE_THRESHOLD_MS` | 300000 | **120000** (legado; preferir `PAYLOAD_STALE_THRESHOLD_MS`) |
+
+`docker-compose.yml` passa vars Speedway ao Laravel (`x-app-environment`) e expõe filtros BB Tips no serviço `collector`.
+
+### Alterado — UI demo e corridas
+
+- **`ManualDemoPage`** — polling 12s/20s, cards de status, grid de corridas, atalhos `default` vs `ghost`
+- **`DemoOperationOutcome`** + **`PilotOrderChips`** — palpite vs resultado com cores; link `external_id` → `/races/:id`
+- **`RacesPage`** — oculta stale em “Próximas”; alerta de pendências antigas
+- Menu SPA: **Corridas → Análises → Demo**; glossário só via Dashboard
+
+### Corrigido
+
+- Pending presas na UI — ancoragem em `first_seen_at` (não “hoje”), detecção por lag de `external_id` e offset +4h da grade virtual
+- **Gap de produção:** reconciliação e catch-up de liquidação demo não rodavam sem container `scheduler`
+
+### Documentação
+
+- README, `docs/ARCHITECTURE.md`, `collector/README.md`, `.env.coolify.example`, `.env.docker.example`, `collector/.env.example` — stack com `scheduler`, envs de timing/collector e guia Coolify atualizado
+
 ### Adicionado — Liquidação automática e contabilidade corrigida no demo manual
 
 - **`SettleDemoOperationsJob`** — liquida operações `open` vinculadas a corridas `settled` (winner / forecast / tricast); idempotente com `lockForUpdate`
@@ -166,9 +210,15 @@ MVP fundação em produção: coleta 24/7, backend, histórico, deploy Coolify e
 
 Deploy validado no **Coolify** ([speedanalytics.raphai.eu](https://speedanalytics.raphai.eu)): coleta 24/7, ingestão de payloads, fila, dashboard e histórico de corridas.
 
+### Alterado — Deploy produção (2026-06-22)
+
+- `docker-compose.yml` — serviço **`scheduler`** (`php artisan schedule:work`); vars Speedway no `x-app-environment`
+- Thresholds do collector atualizados (`PAYLOAD_STALE_THRESHOLD_MS`, `RELOAD_THRESHOLD_MS`, intervalos 30s)
+- `.env.coolify.example` e exemplos Docker alinhados
+
 ### Adicionado — Deploy produção (Coolify)
 
-- `docker-compose.yml` — stack completa: `web`, `queue`, `collector`, `mysql`, `redis`
+- `docker-compose.yml` — stack completa: `web`, `queue`, `collector`, `mysql`, `redis` (serviço `scheduler` adicionado em 2026-06-22 — ver `[Unreleased]`)
 - `docker/app/Dockerfile` — imagem multi-stage (Vite + Composer + PHP 8.4-FPM + nginx/supervisor)
 - `docker/collector/Dockerfile` — Node 24 + Playwright Chromium
 - `docker/nginx/coolify.conf`, `docker/supervisor/supervisord.conf`, `docker/app/entrypoint.sh`
