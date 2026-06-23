@@ -79,10 +79,7 @@ class SpeedwayRacePresenter
             ? app(RaceTimingService::class)->presentation($race, null, $maxPendingExternalId)
             : null;
 
-        $settlementLatencySeconds = null;
-        if ($race->first_seen_at !== null && $race->settled_at !== null) {
-            $settlementLatencySeconds = (int) $race->first_seen_at->diffInSeconds($race->settled_at);
-        }
+        $preRaceOdds = self::oddsForForecast($race);
 
         return [
             'id' => $race->id,
@@ -91,19 +88,25 @@ class SpeedwayRacePresenter
             'schedule_slot' => self::scheduleSlot($race),
             'race_hour' => $race->race_hour,
             'race_minute' => $race->race_minute,
-            'pilot_odds_raw' => $race->pilot_odds_raw,
+            'pilot_odds_raw' => $preRaceOdds,
             'favorite_position' => $oddsAnalysis['favorite_position'],
+            'favorite_odd' => $race->favorite_odd !== null ? (string) $race->favorite_odd : null,
+            'underdog_position' => $race->underdog_position,
+            'underdog_odd' => $race->underdog_odd !== null ? (string) $race->underdog_odd : null,
             'odds_forecast' => $oddsAnalysis['forecast'],
             'odds_tricast' => $oddsAnalysis['tricast'],
             'favorite_won' => $oddsAnalysis['favorite_won'],
             'underdog_won' => $race->winner_was_underdog,
+            'forecast_hit' => $race->forecast_hit,
+            'tricast_exact_hit' => $race->tricast_exact_hit,
             'forecast_first_won' => $oddsAnalysis['forecast_first_won'],
+            'result_forecast_order' => $race->result_forecast_order,
+            'result_tricast_order' => $race->result_tricast_order,
             'winner_position' => $race->winner_position,
             'winner_odd' => $race->winner_odd,
             'pilot_name' => $race->pilot_name,
             'first_seen_at' => $race->first_seen_at?->toIso8601String(),
             'settled_at' => $race->settled_at?->toIso8601String(),
-            'settlement_latency_seconds' => $settlementLatencySeconds,
             'stale_at' => $race->stale_at?->toIso8601String(),
             'stale_reason' => $race->stale_reason,
             'timing' => $timing,
